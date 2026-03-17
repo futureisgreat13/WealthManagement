@@ -571,7 +571,7 @@ def _create_blank_templates():
         "assumptions.json", "fx_rates.json", "symbol_classifications.json",
         "dividend_config.json", "asset_value_history.json", "asset_history.json",
         "cashflow.json", "ibkr_capital_flows.json", "ibkr_database.json",
-        "optiver.json", "rules_notes.json", "todos.json",
+        "rules_notes.json", "todos.json",
         "historical_totals.json", "overview_settings.json",
     ]
     for fname in list_files:
@@ -936,15 +936,6 @@ def get_debt_total_eur() -> float:
     return -sum(i.get("outstanding_balance_eur", 0) * i.get("pro_rata_pct", 100) / 100 for i in items)
 
 
-def get_optiver_total_eur() -> float:
-    data = load_json(DATA_DIR / "optiver.json", {})
-    free_price = data.get("free_share_price", 0)
-    bound_price = data.get("bound_share_price", 0)
-    free_shares = sum(s.get("shares_added", 0) for s in data.get("free_shares", []))
-    bound_shares = sum(s.get("shares_added", 0) for s in data.get("bound_shares", []))
-    return free_shares * free_price + bound_shares * bound_price
-
-
 def get_all_totals_eur(fx_rates: dict) -> dict:
     return {
         "Equity": get_public_stocks_total_eur(fx_rates, type_filter="non-REIT"),
@@ -1297,11 +1288,7 @@ def get_debt_payments_by_year() -> dict:
 
 
 def get_pe_dividends_total(year: int = 0) -> float:
-    """Return total annual dividends from active PE items.
-
-    If year is provided, exclude Optiver items for years <= 2026
-    (Optiver dividends are tracked separately in cash flow to avoid double-counting).
-    """
+    """Return total annual dividends from active PE items."""
     items = load_json(DATA_DIR / "private_equity.json", [])
     total = 0.0
     for i in items:
@@ -1309,10 +1296,6 @@ def get_pe_dividends_total(year: int = 0) -> float:
             continue
         div = i.get("annual_dividend_eur", 0)
         if not div:
-            continue
-        # Exclude Optiver PE dividends for 2025/2026 — they are counted
-        # under "Optiver Dividends" income line separately
-        if year and year <= 2026 and "Optiver" in i.get("name", ""):
             continue
         total += div
     return total
@@ -1903,70 +1886,6 @@ def compute_business_timeline(years_list: list, scenario: str = "Base") -> list:
 
             prev_val = v
             totals[i] += v
-
-    return totals
-
-
-def compute_optiver_timeline(years_list: list, scenario: str = "Base") -> list:
-    """Compute Optiver value for each year in years_list.
-
-    This is THE single source of truth for Optiver valuations, used by:
-    - Optiver tab Valuations
-    - Overview projection
-    """
-    data = load_json(DATA_DIR / "optiver.json", {
-        "free_share_price": 10000, "bound_share_price": 3631,
-        "free_shares": [], "bound_shares": [],
-        "scenario_appreciation": {"super_bear": 0, "bear": 5, "base": 10, "bull": 18},
-        "year_end_values": {},
-    })
-
-    free_price = data.get("free_share_price", 10000)
-    bound_price = data.get("bound_share_price", 3631)
-    free_shares_list = data.get("free_shares", [])
-    bound_shares_list = data.get("bound_shares", [])
-    year_end_values = data.get("year_end_values", {})
-    scen_ap = data.get("scenario_appreciation", {})
-    scen_key = SCENARIO_KEYS.get(scenario, "base")
-    appreciation = scen_ap.get(scen_key, 10)
-
-    free_yev = year_end_values.get("free", {})
-    bound_yev = year_end_values.get("bound", {})
-
-    def cum_shares_at_year(share_list, yr):
-        return sum(s.get("shares_added", 0) for s in share_list if s.get("year", 9999) <= yr)
-
-    totals = [0.0] * len(years_list)
-    prev_free = 0
-    prev_bound = 0
-
-    for i, yr in enumerate(years_list):
-        yr_str = str(yr)
-        # Free shares
-        free_actual = free_yev.get(yr_str)
-        has_free_actual = free_actual is not None and free_actual > 0
-        if has_free_actual:
-            fv = free_actual
-        elif prev_free > 0:
-            fv = prev_free * (1 + appreciation / 100)
-        else:
-            fc = cum_shares_at_year(free_shares_list, yr)
-            fv = fc * free_price if fc > 0 else 0
-        prev_free = fv
-
-        # Bound shares
-        bound_actual = bound_yev.get(yr_str)
-        has_bound_actual = bound_actual is not None and bound_actual > 0
-        if has_bound_actual:
-            bv = bound_actual
-        elif prev_bound > 0:
-            bv = prev_bound * (1 + appreciation / 100)
-        else:
-            bc = cum_shares_at_year(bound_shares_list, yr)
-            bv = bc * bound_price if bc > 0 else 0
-        prev_bound = bv
-
-        totals[i] = round(fv) + round(bv)
 
     return totals
 

@@ -79,7 +79,6 @@ with tab1:
 - **Base year**: Projections start from 2024 (last actual data).
   When user adds 2025 year-end data, 2026+ auto-recalculates from 2025 anchor.
 - **Overrides**: value_history entries take precedence over formula calculations.
-  Optiver items have intentional overrides for 2025/2026 as anchors.
 - **success_probability**: Derived from "Chance to 0" assessment.
   - `success_probability = (1 - chance_to_0) × 100`
   - Default = **0%** if not specified (conservative — assumes total loss).
