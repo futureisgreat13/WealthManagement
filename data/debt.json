@@ -1,0 +1,8 @@
+[
+  {"id":"d1","name":"Amsterdam House","year_taken":2017,"original_amount_eur":616250,"interest_rate_pct":2.0,"type":"Fixed","pro_rata_pct":65.5,"outstanding_balance_eur":470000,"annual_payment_eur":27249},
+  {"id":"d2","name":"Indore Land","year_taken":2021,"original_amount_eur":170455,"interest_rate_pct":6.5,"type":"Fixed","pro_rata_pct":100,"outstanding_balance_eur":0,"annual_payment_eur":0},
+  {"id":"d3","name":"Amsterdam House Top Up","year_taken":2022,"original_amount_eur":325275,"interest_rate_pct":2.0,"type":"Fixed","pro_rata_pct":34.5,"outstanding_balance_eur":300000,"annual_payment_eur":14820},
+  {"id":"d4","name":"Optiver Shares 23","year_taken":2023,"original_amount_eur":1596350,"interest_rate_pct":5.0,"type":"Fixed","pro_rata_pct":100,"outstanding_balance_eur":0,"annual_payment_eur":0},
+  {"id":"d5","name":"Optiver Shares 24","year_taken":2024,"original_amount_eur":0,"interest_rate_pct":5.0,"type":"Fixed","pro_rata_pct":0,"outstanding_balance_eur":0,"annual_payment_eur":0},
+  {"id":"d6","name":"Amsterdam New House","year_taken":2024,"original_amount_eur":3516790,"interest_rate_pct":3.5,"type":"Fixed","pro_rata_pct":100,"outstanding_balance_eur":3450000,"annual_payment_eur":189878}
+]

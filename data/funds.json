@@ -1,0 +1,551 @@
+[
+  {
+    "id": "f1",
+    "name": "Blue Owl",
+    "year_invested": 2024,
+    "expected_exit_year": 2034,
+    "committed_eur": 380952.0,
+    "called_eur": 46615.0,
+    "current_nav_eur": 46615.0,
+    "expected_irr_pct": 10.0,
+    "access_layer": "LA",
+    "status": "Active",
+    "notes": "",
+    "capital_call_schedule": [
+      {
+        "year": 2024,
+        "planned_pct": 12.2,
+        "actual_eur": 46615
+      },
+      {
+        "year": 2025,
+        "planned_pct": 25.0,
+        "actual_eur": 95238
+      },
+      {
+        "year": 2026,
+        "planned_pct": 10.0,
+        "actual_eur": 38095
+      }
+    ],
+    "value_history": {
+      "2024": 46615
+    }
+  },
+  {
+    "id": "f2",
+    "name": "Chicago Atlantic Debt Fund",
+    "year_invested": 2024,
+    "expected_exit_year": 2029,
+    "committed_eur": 92593.0,
+    "called_eur": 92593.0,
+    "current_nav_eur": 92593.0,
+    "expected_irr_pct": 10.0,
+    "access_layer": "LA",
+    "status": "Active",
+    "notes": "",
+    "capital_call_schedule": [
+      {
+        "year": 2024,
+        "planned_pct": 100.0,
+        "actual_eur": 92593
+      }
+    ],
+    "value_history": {
+      "2024": 92593
+    }
+  },
+  {
+    "id": "f3",
+    "name": "Step Stone Private Market",
+    "year_invested": 2024,
+    "expected_exit_year": null,
+    "committed_eur": 92593.0,
+    "called_eur": 92593.0,
+    "current_nav_eur": 92593.0,
+    "expected_irr_pct": 10.0,
+    "access_layer": "LA",
+    "status": "Active",
+    "notes": "",
+    "capital_call_schedule": [
+      {
+        "year": 2024,
+        "planned_pct": 100.0,
+        "actual_eur": 92593
+      }
+    ],
+    "value_history": {
+      "2024": 92593
+    }
+  },
+  {
+    "id": "f4",
+    "name": "Golub Capital",
+    "year_invested": 2024,
+    "expected_exit_year": 2032,
+    "committed_eur": 188679.0,
+    "called_eur": 58333.0,
+    "current_nav_eur": 58333.0,
+    "expected_irr_pct": 10.0,
+    "access_layer": "LA",
+    "status": "Active",
+    "notes": "",
+    "capital_call_schedule": [
+      {
+        "year": 2024,
+        "planned_pct": 30.9,
+        "actual_eur": 58333
+      },
+      {
+        "year": 2025,
+        "planned_pct": 33.0,
+        "actual_eur": 62264
+      },
+      {
+        "year": 2026,
+        "planned_pct": 33.0,
+        "actual_eur": 62264
+      }
+    ],
+    "value_history": {
+      "2024": 58333
+    }
+  },
+  {
+    "id": "f5",
+    "name": "Pacific Lake Partners",
+    "year_invested": 2024,
+    "expected_exit_year": 2036,
+    "committed_eur": 133333.0,
+    "called_eur": 6481.0,
+    "current_nav_eur": 6481.0,
+    "expected_irr_pct": 10.0,
+    "access_layer": "LA",
+    "status": "Active",
+    "notes": "",
+    "capital_call_schedule": [
+      {
+        "year": 2024,
+        "planned_pct": 4.9,
+        "actual_eur": 6481
+      },
+      {
+        "year": 2025,
+        "planned_pct": 40.0,
+        "actual_eur": 53333
+      },
+      {
+        "year": 2026,
+        "planned_pct": 40.0,
+        "actual_eur": 53333
+      }
+    ],
+    "value_history": {
+      "2024": 6481
+    }
+  },
+  {
+    "id": "f6",
+    "name": "Thurston",
+    "year_invested": 2024,
+    "expected_exit_year": 2032,
+    "committed_eur": 231481.0,
+    "called_eur": 183306.0,
+    "current_nav_eur": 183306.0,
+    "expected_irr_pct": 10.0,
+    "access_layer": "LA",
+    "status": "Active",
+    "notes": "",
+    "capital_call_schedule": [
+      {
+        "year": 2024,
+        "planned_pct": 79.2,
+        "actual_eur": 183306
+      },
+      {
+        "year": 2025,
+        "planned_pct": 20.0,
+        "actual_eur": 46296
+      }
+    ],
+    "value_history": {
+      "2024": 183306
+    }
+  },
+  {
+    "id": "f7",
+    "name": "Silver Hill",
+    "year_invested": 2024,
+    "expected_exit_year": 2034,
+    "committed_eur": 471698.0,
+    "called_eur": 155913.0,
+    "current_nav_eur": 155913.0,
+    "expected_irr_pct": 10.0,
+    "access_layer": "LA",
+    "status": "Active",
+    "notes": "",
+    "capital_call_schedule": [
+      {
+        "year": 2024,
+        "planned_pct": 33.1,
+        "actual_eur": 155913
+      },
+      {
+        "year": 2025,
+        "planned_pct": 30.0,
+        "actual_eur": 141509
+      },
+      {
+        "year": 2026,
+        "planned_pct": 35.0,
+        "actual_eur": 165094
+      }
+    ],
+    "value_history": {
+      "2024": 155913
+    }
+  },
+  {
+    "id": "f8",
+    "name": "Velocis",
+    "year_invested": 2025,
+    "expected_exit_year": 2035,
+    "committed_eur": 476190.0,
+    "called_eur": 0.0,
+    "current_nav_eur": 0.0,
+    "expected_irr_pct": 10.0,
+    "access_layer": "LA",
+    "status": "Active",
+    "notes": "",
+    "capital_call_schedule": [
+      {
+        "year": 2025,
+        "planned_pct": 6.4,
+        "actual_eur": 30600
+      },
+      {
+        "year": 2026,
+        "planned_pct": 35.0,
+        "actual_eur": 166667
+      },
+      {
+        "year": 2027,
+        "planned_pct": 35.0,
+        "actual_eur": 166667
+      },
+      {
+        "year": 2028,
+        "planned_pct": 20.0,
+        "actual_eur": 95238
+      }
+    ],
+    "value_history": {}
+  },
+  {
+    "id": "f9",
+    "name": "Statera",
+    "year_invested": 2024,
+    "expected_exit_year": 2032,
+    "committed_eur": 190476.0,
+    "called_eur": 55556.0,
+    "current_nav_eur": 55556.0,
+    "expected_irr_pct": 10.0,
+    "access_layer": "LA",
+    "status": "Active",
+    "notes": "",
+    "capital_call_schedule": [
+      {
+        "year": 2024,
+        "planned_pct": 29.2,
+        "actual_eur": 55556
+      },
+      {
+        "year": 2025,
+        "planned_pct": 25.0,
+        "actual_eur": 47619
+      },
+      {
+        "year": 2026,
+        "planned_pct": 25.0,
+        "actual_eur": 47619
+      },
+      {
+        "year": 2027,
+        "planned_pct": 20.0,
+        "actual_eur": 38095
+      }
+    ],
+    "value_history": {
+      "2024": 55556
+    }
+  },
+  {
+    "id": "f10",
+    "name": "Levine",
+    "year_invested": 2024,
+    "expected_exit_year": 2036,
+    "committed_eur": 233645.0,
+    "called_eur": 0.0,
+    "current_nav_eur": 0.0,
+    "expected_irr_pct": 10.0,
+    "access_layer": "LA",
+    "status": "Active",
+    "notes": "",
+    "capital_call_schedule": [
+      {
+        "year": 2025,
+        "planned_pct": 13.4,
+        "actual_eur": 31297
+      },
+      {
+        "year": 2026,
+        "planned_pct": 13.3,
+        "actual_eur": 31075
+      },
+      {
+        "year": 2027,
+        "planned_pct": 13.3,
+        "actual_eur": 31075
+      },
+      {
+        "year": 2028,
+        "planned_pct": 13.3,
+        "actual_eur": 31075
+      },
+      {
+        "year": 2029,
+        "planned_pct": 13.3,
+        "actual_eur": 31075
+      },
+      {
+        "year": 2030,
+        "planned_pct": 13.3,
+        "actual_eur": 31075
+      }
+    ],
+    "value_history": {}
+  },
+  {
+    "id": "f11",
+    "name": "Peterson Search Partners III",
+    "year_invested": 2025,
+    "expected_exit_year": null,
+    "committed_eur": 190476.0,
+    "called_eur": 0.0,
+    "current_nav_eur": 0.0,
+    "expected_irr_pct": 10.0,
+    "access_layer": "LA",
+    "status": "Active",
+    "notes": "",
+    "capital_call_schedule": [
+      {
+        "year": 2025,
+        "planned_pct": 20.0,
+        "actual_eur": 38045
+      },
+      {
+        "year": 2026,
+        "planned_pct": 27.5,
+        "actual_eur": 52381
+      },
+      {
+        "year": 2027,
+        "planned_pct": 27.5,
+        "actual_eur": 52381
+      },
+      {
+        "year": 2028,
+        "planned_pct": 30.0,
+        "actual_eur": 57143
+      }
+    ],
+    "value_history": {}
+  },
+  {
+    "id": "f12",
+    "name": "Lightspeed Co-Investment Fund I",
+    "year_invested": 2025,
+    "expected_exit_year": 2036,
+    "committed_eur": 370370.0,
+    "called_eur": 0.0,
+    "current_nav_eur": 0.0,
+    "expected_irr_pct": 10.0,
+    "access_layer": "LA",
+    "status": "Active",
+    "notes": "",
+    "capital_call_schedule": [
+      {
+        "year": 2025,
+        "planned_pct": 25.0,
+        "actual_eur": 92593
+      },
+      {
+        "year": 2026,
+        "planned_pct": 25.0,
+        "actual_eur": 92593
+      },
+      {
+        "year": 2027,
+        "planned_pct": 25.0,
+        "actual_eur": 92593
+      },
+      {
+        "year": 2028,
+        "planned_pct": 25.0,
+        "actual_eur": 92593
+      }
+    ],
+    "value_history": {}
+  },
+  {
+    "id": "f13",
+    "name": "Formentera",
+    "year_invested": 2025,
+    "expected_exit_year": 2035,
+    "committed_eur": 454545.0,
+    "called_eur": 0.0,
+    "current_nav_eur": 0.0,
+    "expected_irr_pct": 10.0,
+    "access_layer": "",
+    "status": "Active",
+    "notes": "",
+    "capital_call_schedule": [
+      {
+        "year": 2025,
+        "planned_pct": 33.0,
+        "actual_eur": 150000
+      },
+      {
+        "year": 2026,
+        "planned_pct": 33.0,
+        "actual_eur": 150000
+      },
+      {
+        "year": 2027,
+        "planned_pct": 33.0,
+        "actual_eur": 150000
+      }
+    ],
+    "value_history": {}
+  },
+  {
+    "id": "f14",
+    "name": "Stellaris",
+    "year_invested": 2021,
+    "expected_exit_year": 2033,
+    "committed_eur": 268817.0,
+    "called_eur": 188171.0,
+    "current_nav_eur": 242149.0,
+    "expected_irr_pct": 10.0,
+    "access_layer": "Direct",
+    "status": "Active",
+    "notes": "",
+    "capital_call_schedule": [
+      {
+        "year": 2021,
+        "planned_pct": 10.0,
+        "actual_eur": 26882
+      },
+      {
+        "year": 2022,
+        "planned_pct": 20.0,
+        "actual_eur": 53763
+      },
+      {
+        "year": 2023,
+        "planned_pct": 20.0,
+        "actual_eur": 53763
+      },
+      {
+        "year": 2024,
+        "planned_pct": 20.0,
+        "actual_eur": 53763
+      },
+      {
+        "year": 2025,
+        "planned_pct": 20.0,
+        "actual_eur": 53763
+      },
+      {
+        "year": 2026,
+        "planned_pct": 10.0,
+        "actual_eur": 26882
+      }
+    ],
+    "value_history": {
+      "2021": 26882,
+      "2022": 86021,
+      "2023": 156989,
+      "2024": 242149
+    }
+  },
+  {
+    "id": "f15",
+    "name": "True Beacon",
+    "year_invested": 2022,
+    "expected_exit_year": null,
+    "committed_eur": 138000.0,
+    "called_eur": 138000.0,
+    "current_nav_eur": 138000.0,
+    "expected_irr_pct": 10.0,
+    "access_layer": "Direct",
+    "status": "Active",
+    "notes": "",
+    "capital_call_schedule": [
+      {
+        "year": 2022,
+        "planned_pct": 100.0,
+        "actual_eur": 138000
+      }
+    ],
+    "value_history": {
+      "2022": 138000
+    }
+  },
+  {
+    "id": "f16",
+    "name": "Crescat",
+    "year_invested": 2021,
+    "expected_exit_year": null,
+    "committed_eur": 102745.0,
+    "called_eur": 102745.0,
+    "current_nav_eur": 102745.0,
+    "expected_irr_pct": 10.0,
+    "access_layer": "Direct",
+    "status": "Active",
+    "notes": "",
+    "capital_call_schedule": [
+      {
+        "year": 2021,
+        "planned_pct": 100.0,
+        "actual_eur": 102745
+      }
+    ],
+    "value_history": {
+      "2021": 102745
+    }
+  },
+  {
+    "id": "f17",
+    "name": "Tomales Bay Capital Fund",
+    "year_invested": 2023,
+    "expected_exit_year": 2033,
+    "committed_eur": 236000.0,
+    "called_eur": 236000.0,
+    "current_nav_eur": 236000.0,
+    "expected_irr_pct": 10.0,
+    "access_layer": "Direct",
+    "status": "Active",
+    "notes": "",
+    "capital_call_schedule": [
+      {
+        "year": 2023,
+        "planned_pct": 100.0,
+        "actual_eur": 236000
+      }
+    ],
+    "value_history": {
+      "2023": 236000
+    }
+  }
+]

@@ -1,0 +1,43 @@
+{
+  "target_allocation": {
+    "REITs": 4.0,
+    "Real Estate": 10.0,
+    "Private Equity": 49.5,
+    "Funds": 10.0,
+    "Business": 10.0,
+    "Bonds": 1.0,
+    "Precious Metals": 1.5,
+    "Cash": 3.0,
+    "Debt": -7.5,
+    "Equity": 18.0
+  },
+  "planned_investment_yr": {
+    "REITs": 150000.0,
+    "Real Estate": 0.0,
+    "Private Equity": 500000.0,
+    "Funds": 300000.0,
+    "Business": 0.0,
+    "Bonds": 50000.0,
+    "Precious Metals": 150000.0,
+    "Cash": 0.0,
+    "Debt": 0.0,
+    "Equity": 750000.0
+  },
+  "planned_investment_by_year": {
+    "Equity": {
+      "2024": -1064000
+    }
+  },
+  "dividend_yield_pct": {
+    "REITs": 4.0,
+    "Real Estate": 0.0,
+    "Private Equity": 2.0,
+    "Funds": 0.0,
+    "Business": 0.0,
+    "Bonds": 3.0,
+    "Precious Metals": 0.5,
+    "Cash": 1.0,
+    "Debt": 0.0,
+    "Equity": 1.0
+  }
+}

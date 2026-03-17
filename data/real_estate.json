@@ -1,0 +1,212 @@
+[
+  {
+    "id": "re1",
+    "name": "Amsterdam House",
+    "year_invested": 2017,
+    "amount_invested_eur": 800000.0,
+    "current_value_eur": 0.0,
+    "exit_value_eur": 1150000.0,
+    "annual_rental_eur": 0.0,
+    "mortgage_total_eur": 941525.0,
+    "mortgage_outstanding_eur": 770000.0,
+    "expected_irr_pct": 2.0,
+    "success_probability_pct": 100.0,
+    "expected_exit_year": 2026,
+    "status": "Exited",
+    "notes": "Sold 2026 for \u20ac1.15M",
+    "value_history": {
+      "2017": 800000,
+      "2018": 800000,
+      "2019": 800000,
+      "2020": 800000,
+      "2021": 800000,
+      "2022": 800000,
+      "2023": 1100000,
+      "2024": 1000000,
+      "2026": 1150000,
+      "2025": 1000000
+    }
+  },
+  {
+    "id": "re2",
+    "name": "Indore Land",
+    "year_invested": 2017,
+    "amount_invested_eur": 88235.0,
+    "current_value_eur": 0.0,
+    "exit_value_eur": 153409.0,
+    "annual_rental_eur": 0.0,
+    "mortgage_total_eur": 0.0,
+    "mortgage_outstanding_eur": 0.0,
+    "expected_irr_pct": 10.0,
+    "success_probability_pct": 100.0,
+    "expected_exit_year": 2023,
+    "status": "Exited",
+    "notes": "Sold 2023, 9.7% actual IRR",
+    "value_history": {
+      "2017": 88235,
+      "2018": 88235,
+      "2019": 88235,
+      "2020": 88235,
+      "2021": 88235,
+      "2022": 88235,
+      "2023": 153409
+    }
+  },
+  {
+    "id": "re3",
+    "name": "Indore Home",
+    "year_invested": 2021,
+    "amount_invested_eur": 478249.0,
+    "current_value_eur": 0.0,
+    "exit_value_eur": 559551.0,
+    "annual_rental_eur": 0.0,
+    "mortgage_total_eur": 0.0,
+    "mortgage_outstanding_eur": 0.0,
+    "expected_irr_pct": 5.0,
+    "success_probability_pct": 100.0,
+    "expected_exit_year": 2024,
+    "status": "Exited",
+    "notes": "Saket Land, 5.4% actual IRR",
+    "value_history": {
+      "2021": 478249,
+      "2022": 478249,
+      "2023": 480000,
+      "2024": 559551.0
+    }
+  },
+  {
+    "id": "re4",
+    "name": "RE Dukaan",
+    "year_invested": 2023,
+    "amount_invested_eur": 170455.0,
+    "current_value_eur": 170455.0,
+    "exit_value_eur": 0.0,
+    "annual_rental_eur": 0.0,
+    "mortgage_total_eur": 0.0,
+    "mortgage_outstanding_eur": 0.0,
+    "expected_irr_pct": 0.0,
+    "success_probability_pct": 100.0,
+    "expected_exit_year": 3000,
+    "status": "Active",
+    "notes": "",
+    "value_history": {
+      "2023": 170455,
+      "2024": 170455
+    }
+  },
+  {
+    "id": "re5",
+    "name": "Amsterdam Home 2",
+    "year_invested": 2024,
+    "amount_invested_eur": 3927170.0,
+    "current_value_eur": 3838000.0,
+    "exit_value_eur": 0.0,
+    "annual_rental_eur": 0.0,
+    "mortgage_total_eur": 3516790.0,
+    "mortgage_outstanding_eur": 3450000.0,
+    "expected_irr_pct": 1.0,
+    "success_probability_pct": 100.0,
+    "expected_exit_year": 3000,
+    "status": "Active",
+    "notes": "Primary residence, bought 2024",
+    "value_history": {
+      "2024": 3800000
+    }
+  },
+  {
+    "id": "re6",
+    "name": "Amsterdam Home 2 (Equity)",
+    "year_invested": 2024,
+    "amount_invested_eur": 2400000.0,
+    "current_value_eur": 2400000.0,
+    "exit_value_eur": 0.0,
+    "annual_rental_eur": 0.0,
+    "mortgage_total_eur": 0.0,
+    "mortgage_outstanding_eur": 0.0,
+    "expected_irr_pct": 1.0,
+    "success_probability_pct": 100.0,
+    "expected_exit_year": 3000,
+    "status": "Active",
+    "notes": "Equity portion",
+    "value_history": {
+      "2024": 2400000
+    }
+  },
+  {
+    "id": "re7",
+    "name": "Amsterdam Home 2 (Tax Benefit)",
+    "year_invested": 2025,
+    "amount_invested_eur": 600000.0,
+    "current_value_eur": 600000.0,
+    "exit_value_eur": 0.0,
+    "annual_rental_eur": 0.0,
+    "mortgage_total_eur": 0.0,
+    "mortgage_outstanding_eur": 0.0,
+    "expected_irr_pct": 1.0,
+    "success_probability_pct": 100.0,
+    "expected_exit_year": 3000,
+    "status": "Active",
+    "notes": "Tax benefit",
+    "value_history": {
+      "2025": 600000
+    }
+  },
+  {
+    "id": "re8",
+    "name": "Amsterdam Home 2 (Additional)",
+    "year_invested": 2026,
+    "amount_invested_eur": 245000.0,
+    "current_value_eur": 245000.0,
+    "exit_value_eur": 0.0,
+    "annual_rental_eur": 0.0,
+    "mortgage_total_eur": 0.0,
+    "mortgage_outstanding_eur": 0.0,
+    "expected_irr_pct": 1.0,
+    "success_probability_pct": 100.0,
+    "expected_exit_year": 3000,
+    "status": "Active",
+    "notes": "",
+    "value_history": {
+      "2026": 245000
+    }
+  },
+  {
+    "id": "re9",
+    "name": "Indore Land 2",
+    "year_invested": 2024,
+    "amount_invested_eur": 208315.0,
+    "current_value_eur": 0.0,
+    "exit_value_eur": 207000.0,
+    "annual_rental_eur": 0.0,
+    "mortgage_total_eur": 0.0,
+    "mortgage_outstanding_eur": 0.0,
+    "expected_irr_pct": 10.0,
+    "success_probability_pct": 100.0,
+    "expected_exit_year": 2025,
+    "status": "Exited",
+    "notes": "Plots in exchange of Saket house, -0.6% actual IRR",
+    "value_history": {
+      "2024": 208315,
+      "2025": 207000
+    }
+  },
+  {
+    "id": "re10",
+    "name": "Indore Apartment",
+    "year_invested": 2025,
+    "amount_invested_eur": 68182.0,
+    "current_value_eur": 68182.0,
+    "exit_value_eur": 0.0,
+    "annual_rental_eur": 0.0,
+    "mortgage_total_eur": 0.0,
+    "mortgage_outstanding_eur": 0.0,
+    "expected_irr_pct": 0.0,
+    "success_probability_pct": 50.0,
+    "expected_exit_year": 3000,
+    "status": "Active",
+    "notes": "",
+    "value_history": {
+      "2025": 68182
+    }
+  }
+]
