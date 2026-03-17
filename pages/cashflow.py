@@ -228,6 +228,7 @@ with st.expander("Edit Manual Values", expanded=False):
     edit_row_mapping.append(("actual_cash", "actual_cash"))
 
     edit_df = pd.DataFrame(edit_rows)
+    edit_df = utils.inject_formulas_for_edit(edit_df, "cashflow_income", years)
     edited = st.data_editor(edit_df, use_container_width=True, hide_index=True,
         column_config={
             "Category": st.column_config.TextColumn(width="small"),
@@ -235,7 +236,7 @@ with st.expander("Edit Manual Values", expanded=False):
         },
         disabled=["Category"],
         key="cashflow_unified_editor")
-    edited = utils.process_math_in_df(edited, years)
+    edited = utils.process_math_in_df(edited, years, editor_key="cashflow_income")
 
     if st.button("Save Changes", type="primary", key="cashflow_save"):
         for i, (_, row) in enumerate(edited.iterrows()):

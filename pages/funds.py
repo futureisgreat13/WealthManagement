@@ -117,6 +117,7 @@ with tab2:
                 sched_df = pd.DataFrame(sched_rows)
                 st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable — enter your values below</p>', unsafe_allow_html=True)
                 st.caption("💡 Supports math expressions (e.g. 500*2) and FX shortcuts (e.g. 1000/EURUSD)")
+                sched_df = utils.inject_formulas_for_edit(sched_df, f"funds_calls_{f.get('id', '')}", ["Planned %", "Actual EUR"])
                 edited_sched = st.data_editor(sched_df, use_container_width=True, hide_index=True,
                     num_rows="dynamic", key=f"calls_{f.get('id', '')}",
                     column_config={
@@ -125,7 +126,7 @@ with tab2:
                         "Actual EUR": st.column_config.NumberColumn(format="€%.0f"),
                         "Planned EUR": st.column_config.TextColumn(disabled=True),
                     })
-                edited_sched = utils.process_math_in_df(edited_sched, ["Planned %", "Actual EUR"])
+                edited_sched = utils.process_math_in_df(edited_sched, ["Planned %", "Actual EUR"], editor_key=f"funds_calls_{f.get('id', '')}")
 
                 if st.button(f"Save {f.get('name', '')}", key=f"save_calls_{f.get('id', '')}"):
                     new_sched = []
@@ -251,10 +252,11 @@ with tab3:
     for yr_str in year_strs:
         col_config[yr_str] = st.column_config.NumberColumn(format="€%.0f")
 
+    proj_df = utils.inject_formulas_for_edit(proj_df, "funds_valuations", year_strs)
     edited_proj = st.data_editor(proj_df, use_container_width=True, hide_index=True,
         height=row_height, column_config=col_config,
         disabled=["Name", "IRR", "Exit"], key="fund_valuation_editor")
-    edited_proj = utils.process_math_in_df(edited_proj, year_strs)
+    edited_proj = utils.process_math_in_df(edited_proj, year_strs, editor_key="funds_valuations")
 
     if st.button("💾 Save Valuations", type="primary", key="fund_save_valuations"):
         all_funds = utils.load_json(utils.DATA_DIR / "funds.json", [])
@@ -346,6 +348,7 @@ with tab4:
     row_height = min(400, max(200, len(edit_rows) * 32 + 40))
     st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable — enter your values below</p>', unsafe_allow_html=True)
     st.caption("💡 Supports math expressions (e.g. 500*2) and FX shortcuts (e.g. 1000/EURUSD)")
+    edit_df = utils.inject_formulas_for_edit(edit_df, "funds_holdings", ["committed_eur", "called_eur", "current_nav_eur", "expected_irr_pct"])
     edited = st.data_editor(edit_df, use_container_width=True, hide_index=True, num_rows="dynamic",
         height=row_height,
         column_config={
@@ -357,7 +360,7 @@ with tab4:
             "expected_irr_pct": st.column_config.NumberColumn("IRR %", format="%.1f%%"),
             "expected_exit_year": st.column_config.NumberColumn("Exit Year", format="%d"),
         })
-    edited = utils.process_math_in_df(edited, ["committed_eur", "called_eur", "current_nav_eur", "expected_irr_pct"])
+    edited = utils.process_math_in_df(edited, ["committed_eur", "called_eur", "current_nav_eur", "expected_irr_pct"], editor_key="funds_holdings")
 
     if st.button("💾 Save Funds", type="primary", key="funds_save"):
         new_items = []

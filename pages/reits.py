@@ -126,6 +126,7 @@ with tab2:
         })
 
     st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Edit values below — supports math (e.g. 500*2, 1000/EURUSD). Negative New Capital = money withdrawn.</p>', unsafe_allow_html=True)
+    proj_df = utils.inject_formulas_for_edit(proj_df, "reits_valuations", ["Value (EUR)", "New Capital"])
     edited = st.data_editor(proj_df, use_container_width=True, hide_index=True,
         column_config={
             "Year": st.column_config.NumberColumn(format="%d"),
@@ -133,7 +134,7 @@ with tab2:
             "New Capital": st.column_config.NumberColumn(format="%.0f"),
         },
         disabled=["Year"], key="reit_valuation_editor")
-    edited = utils.process_math_in_df(edited, ["Value (EUR)", "New Capital"])
+    edited = utils.process_math_in_df(edited, ["Value (EUR)", "New Capital"], editor_key="reits_valuations")
 
     if st.button("💾 Save Changes", type="primary", key="reit_val_save"):
         avh = utils.load_json(utils.DATA_DIR / "asset_value_history.json", {})
@@ -201,6 +202,7 @@ with tab3:
         columns=["ticker", "name", "currency", "quantity", "cost_eur", "value_eur", "net_div_eur"])
 
     st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable — enter your values below</p>', unsafe_allow_html=True)
+    edit_df = utils.inject_formulas_for_edit(edit_df, "reits_holdings", ["quantity", "cost_eur", "value_eur", "net_div_eur"])
     edited = st.data_editor(edit_df, use_container_width=True, hide_index=True, num_rows="dynamic",
         column_config={
             "currency": st.column_config.SelectboxColumn("Currency", options=utils.CURRENCIES),
@@ -208,6 +210,7 @@ with tab3:
             "value_eur": st.column_config.NumberColumn("Value (EUR)", format="€%.0f"),
             "net_div_eur": st.column_config.NumberColumn("Div/yr (EUR)", format="€%.0f"),
         })
+    edited = utils.process_math_in_df(edited, ["quantity", "cost_eur", "value_eur", "net_div_eur"], editor_key="reits_holdings")
 
     if st.button("💾 Save REITs", type="primary", key="reits_save"):
         others = [p for p in positions if p.get("type") != "REIT"]

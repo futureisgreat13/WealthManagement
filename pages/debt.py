@@ -72,8 +72,9 @@ with tab_val:
         col_config = {"Name": st.column_config.TextColumn(disabled=True)}
         for yr in val_years:
             col_config[str(yr)] = st.column_config.NumberColumn(format="€%.0f")
+        val_df = utils.inject_formulas_for_edit(val_df, "debt_valuations", [str(yr) for yr in val_years])
         edited_val = st.data_editor(val_df, width="stretch", hide_index=True, column_config=col_config)
-        edited_val = utils.process_math_in_df(edited_val, [str(yr) for yr in val_years])
+        edited_val = utils.process_math_in_df(edited_val, [str(yr) for yr in val_years], editor_key="debt_valuations")
 
         if st.button("💾 Save Valuations", type="primary", key="save_debt_val"):
             for idx, d in enumerate(active_debt):
@@ -114,6 +115,7 @@ with tab_edit:
     edit_df = pd.DataFrame(edit_rows) if edit_rows else pd.DataFrame(columns=["name","year_taken","original_amount_eur","interest_rate_pct","type","pro_rata_pct","outstanding_balance_eur","annual_payment_eur"])
     st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable — enter your values below</p>', unsafe_allow_html=True)
     st.caption("💡 Supports math expressions (e.g. 500*2) and FX shortcuts (e.g. 1000/EURUSD)")
+    edit_df = utils.inject_formulas_for_edit(edit_df, "debt_positions", ["original_amount_eur", "outstanding_balance_eur", "annual_payment_eur", "interest_rate_pct", "pro_rata_pct"])
     edited = st.data_editor(edit_df, width="stretch", hide_index=True, num_rows="dynamic",
         column_config={
             "type": st.column_config.SelectboxColumn("Type", options=["Fixed","Variable","Interest Only"]),
@@ -121,7 +123,7 @@ with tab_edit:
             "outstanding_balance_eur": st.column_config.NumberColumn(format="€%.0f"),
             "annual_payment_eur": st.column_config.NumberColumn(format="€%.0f"),
         })
-    edited = utils.process_math_in_df(edited, ["original_amount_eur", "outstanding_balance_eur", "annual_payment_eur", "interest_rate_pct", "pro_rata_pct"])
+    edited = utils.process_math_in_df(edited, ["original_amount_eur", "outstanding_balance_eur", "annual_payment_eur", "interest_rate_pct", "pro_rata_pct"], editor_key="debt_positions")
 
     if st.button("💾 Save Debt", type="primary"):
         new_items = []

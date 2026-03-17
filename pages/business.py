@@ -99,6 +99,7 @@ with tab2:
             inc_df = pd.DataFrame(inc_rows)
             st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable — enter your values below</p>', unsafe_allow_html=True)
             st.caption("💡 Supports math expressions (e.g. 500*2) and FX shortcuts (e.g. 1000/EURUSD)")
+            inc_df = utils.inject_formulas_for_edit(inc_df, f"business_income_{idx}", ["Actual Income (EUR)"])
             edited_inc = st.data_editor(
                 inc_df, use_container_width=True, hide_index=True,
                 column_config={
@@ -108,7 +109,7 @@ with tab2:
                 disabled=["Year", "Expected (EUR)", "Source"],
                 key=f"biz_income_{idx}",
             )
-            edited_inc = utils.process_math_in_df(edited_inc, ["Actual Income (EUR)"])
+            edited_inc = utils.process_math_in_df(edited_inc, ["Actual Income (EUR)"], editor_key=f"business_income_{idx}")
 
             if st.button(f"💾 Save Income for {bname}", key=f"save_biz_inc_{idx}"):
                 new_ih = {}
@@ -141,6 +142,7 @@ with tab3:
                  "bankruptcy_risk_pct","depreciation_pct","floor_value_eur","pe_multiple","status","close_year"])
     st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable — enter your values below</p>', unsafe_allow_html=True)
     st.caption("💡 Supports math expressions (e.g. 500*2) and FX shortcuts (e.g. 1000/EURUSD)")
+    edit_df = utils.inject_formulas_for_edit(edit_df, "business_positions", ["initial_investment_eur", "expected_annual_cashflow_eur", "bankruptcy_risk_pct", "depreciation_pct", "floor_value_eur", "pe_multiple"])
     edited = st.data_editor(edit_df, use_container_width=True, hide_index=True, num_rows="dynamic",
         column_config={
             "status": st.column_config.SelectboxColumn("Status", options=["Active","Closed","For Sale"]),
@@ -148,7 +150,7 @@ with tab3:
             "expected_annual_cashflow_eur": st.column_config.NumberColumn(format="%.0f"),
             "floor_value_eur": st.column_config.NumberColumn(format="%.0f"),
         })
-    edited = utils.process_math_in_df(edited, ["initial_investment_eur", "expected_annual_cashflow_eur", "bankruptcy_risk_pct", "depreciation_pct", "floor_value_eur", "pe_multiple"])
+    edited = utils.process_math_in_df(edited, ["initial_investment_eur", "expected_annual_cashflow_eur", "bankruptcy_risk_pct", "depreciation_pct", "floor_value_eur", "pe_multiple"], editor_key="business_positions")
 
     if st.button("💾 Save", type="primary"):
         new_items = []

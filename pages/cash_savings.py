@@ -62,13 +62,14 @@ with tab2:
     edit_df = pd.DataFrame(edit_rows) if edit_rows else pd.DataFrame(
         columns=["name", "bank", "currency", "amount", "interest_rate_pct", "type"])
     st.caption("💡 Supports math expressions (e.g. 500*2) and FX shortcuts (e.g. 1000/EURUSD)")
+    edit_df = utils.inject_formulas_for_edit(edit_df, "cash_savings_accounts", ["amount", "interest_rate_pct"])
     edited = st.data_editor(edit_df, use_container_width=True, hide_index=True, num_rows="dynamic",
         column_config={
             "currency": st.column_config.SelectboxColumn("Currency", options=utils.CURRENCIES),
             "type": st.column_config.SelectboxColumn("Type", options=["Cash", "Cash Equivalent"]),
             "amount": st.column_config.NumberColumn(format="%.2f"),
         })
-    edited = utils.process_math_in_df(edited, ["amount", "interest_rate_pct"])
+    edited = utils.process_math_in_df(edited, ["amount", "interest_rate_pct"], editor_key="cash_savings_accounts")
 
     if st.button("💾 Save", type="primary", key="cash_save"):
         new_items = []

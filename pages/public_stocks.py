@@ -162,6 +162,7 @@ with tab2:
 
     # Editable table
     st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Edit values below — supports math (e.g. 500*2, 1000/EURUSD). Negative New Capital = money withdrawn.</p>', unsafe_allow_html=True)
+    proj_df = utils.inject_formulas_for_edit(proj_df, "public_stocks_valuations", ["Value (EUR)", "New Capital"])
     edited = st.data_editor(proj_df, use_container_width=True, hide_index=True,
         column_config={
             "Year": st.column_config.NumberColumn(format="%d"),
@@ -169,7 +170,7 @@ with tab2:
             "New Capital": st.column_config.NumberColumn(format="%.0f"),
         },
         disabled=["Year"], key="eq_valuation_editor")
-    edited = utils.process_math_in_df(edited, ["Value (EUR)", "New Capital"])
+    edited = utils.process_math_in_df(edited, ["Value (EUR)", "New Capital"], editor_key="public_stocks_valuations")
 
     if st.button("💾 Save Changes", type="primary", key="eq_val_save"):
         # Save year-end value overrides
@@ -258,6 +259,7 @@ with tab3:
 
     st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable — enter your values below</p>', unsafe_allow_html=True)
     st.caption("💡 Supports math expressions (e.g. 500*2) and FX shortcuts (e.g. 1000/EURUSD)")
+    edit_df = utils.inject_formulas_for_edit(edit_df, "public_stocks_positions", ["quantity", "cost_eur", "value_eur", "net_div_eur"])
     edited = st.data_editor(edit_df, use_container_width=True, hide_index=True, num_rows="dynamic",
         column_config={
             "type": st.column_config.SelectboxColumn("Type", options=["Equity", "ETF"]),
@@ -266,7 +268,7 @@ with tab3:
             "value_eur": st.column_config.NumberColumn("Value (EUR)", format="€%.0f"),
             "net_div_eur": st.column_config.NumberColumn("Div/yr (EUR)", format="€%.0f"),
         })
-    edited = utils.process_math_in_df(edited, ["quantity", "cost_eur", "value_eur", "net_div_eur"])
+    edited = utils.process_math_in_df(edited, ["quantity", "cost_eur", "value_eur", "net_div_eur"], editor_key="public_stocks_positions")
 
     if st.button("💾 Save Positions", type="primary", key="stocks_save"):
         others = [p for p in positions if p.get("type") not in ("Equity", "ETF")]

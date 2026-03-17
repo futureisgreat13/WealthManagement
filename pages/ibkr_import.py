@@ -207,6 +207,7 @@ if existing_flows:
             edit_rows.append({"Asset Class": ac, "Year": yr, "Net Capital (EUR)": amt})
     if edit_rows:
         edit_df = pd.DataFrame(edit_rows)
+        edit_df = utils.inject_formulas_for_edit(edit_df, "ibkr_capital", ["Net Capital (EUR)"])
         edited = st.data_editor(edit_df, use_container_width=True, hide_index=True,
             num_rows="dynamic",
             column_config={
@@ -215,7 +216,7 @@ if existing_flows:
                     options=["Equity", "REIT", "Precious Metals", "Bond"]),
             },
             key="ibkr_flows_editor")
-        edited = utils.process_math_in_df(edited, ["Net Capital (EUR)"])
+        edited = utils.process_math_in_df(edited, ["Net Capital (EUR)"], editor_key="ibkr_capital")
 
         if st.button("💾 Update Stored Flows", type="primary", key="update_ibkr_flows"):
             new_flows = {}

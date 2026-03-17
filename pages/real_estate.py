@@ -86,6 +86,9 @@ with tab1:
     row_height = min(500, max(250, len(edit_rows) * 32 + 40))
     st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable — add/edit properties directly. Add rows at the bottom.</p>', unsafe_allow_html=True)
     st.caption("💡 Supports math expressions (e.g. 500*2) and FX shortcuts (e.g. 1000/EURUSD)")
+    edit_df = utils.inject_formulas_for_edit(edit_df, "real_estate_properties", ["amount_invested_eur", "current_value_eur", "exit_value_eur",
+                                                 "annual_rental_eur", "mortgage_total_eur", "mortgage_outstanding_eur",
+                                                 "expected_irr_pct", "success_probability_pct"])
     edited = st.data_editor(edit_df, use_container_width=True, hide_index=True, num_rows="dynamic",
         height=row_height,
         column_config={
@@ -101,7 +104,7 @@ with tab1:
         })
     edited = utils.process_math_in_df(edited, ["amount_invested_eur", "current_value_eur", "exit_value_eur",
                                                  "annual_rental_eur", "mortgage_total_eur", "mortgage_outstanding_eur",
-                                                 "expected_irr_pct", "success_probability_pct"])
+                                                 "expected_irr_pct", "success_probability_pct"], editor_key="real_estate_properties")
 
     if st.button("💾 Save Properties", type="primary", key="re_save"):
         new_items = []
@@ -281,10 +284,11 @@ with tab2:
     for yr_str in year_strs:
         col_config[yr_str] = st.column_config.NumberColumn(format="€%.0f")
 
+    proj_df = utils.inject_formulas_for_edit(proj_df, "real_estate_valuations", year_strs)
     edited_proj = st.data_editor(proj_df, use_container_width=True, hide_index=True,
         height=row_height, column_config=col_config,
         disabled=["Name", "Current", "IRR", "Prob", "Year In"], key="re_valuation_editor")
-    edited_proj = utils.process_math_in_df(edited_proj, year_strs)
+    edited_proj = utils.process_math_in_df(edited_proj, year_strs, editor_key="real_estate_valuations")
 
     if st.button("💾 Save Valuations", type="primary", key="re_save_valuations"):
         all_re = utils.load_json(utils.DATA_DIR / "real_estate.json", [])

@@ -249,7 +249,7 @@ def _eur_formatter_js():
 
 def render_aggrid_table(df, key: str, height: int = 400, cell_style_map: dict = None,
                         numeric_cols: list = None, highlight_total_row: bool = False,
-                        bg_style_map: dict = None, **kwargs):
+                        bg_style_map: dict = None, formula_map: dict = None, **kwargs):
     """Render a DataFrame using AG-Grid with cell range selection and status bar.
 
     Features:
@@ -260,6 +260,7 @@ def render_aggrid_table(df, key: str, height: int = 400, cell_style_map: dict = 
     - Optional cell_style_map for formula vs input color coding
     - Optional numeric_cols: columns to treat as numeric (enables SUM in status bar)
     - Optional bg_style_map for background colors: {col: {row_idx: "#hex_color" or None}}
+    - Optional formula_map for hover tooltips: {col: {row_idx: "=formula"}}
 
     Args:
         cell_style_map: Maps column names to dicts of {row_index: cell_type}.
@@ -268,6 +269,8 @@ def render_aggrid_table(df, key: str, height: int = 400, cell_style_map: dict = 
             These columns will display with € formatting and support SUM aggregation.
         bg_style_map: Maps column names to dicts of {row_index: hex_color_string}.
             Sets background color for specific cells. Merged with cell_style_map if both exist.
+        formula_map: Maps column names to dicts of {row_index: formula_string}.
+            Shows formula as tooltip on hover for cells with stored formulas.
     """
     gb = GridOptionsBuilder.from_dataframe(df)
     gb.configure_default_column(
@@ -303,6 +306,21 @@ def render_aggrid_table(df, key: str, height: int = 400, cell_style_map: dict = 
         js_body = "var style = {};\n" + "\n".join(parts) + "\nreturn Object.keys(style).length > 0 ? style : null;"
         return JsCode(f"function(params) {{ {js_body} }}")
 
+    # Build tooltip JS for columns with formula_map
+    def _build_tooltip_js(col):
+        """Build a JsCode tooltipValueGetter that shows stored formula on hover."""
+        if not formula_map or col not in formula_map:
+            return None
+        entries = formula_map[col]
+        if not entries:
+            return None
+        map_str = ",".join(f'"{idx}": "{formula}"' for idx, formula in entries.items())
+        return JsCode(f"""function(params) {{
+            var fmap = {{{map_str}}};
+            var f = fmap[String(params.node.rowIndex)];
+            return f ? f : null;
+        }}""")
+
     # Configure numeric columns with EUR formatter for proper SUM support
     eur_fmt = _eur_formatter_js()
     if numeric_cols:
@@ -312,6 +330,9 @@ def render_aggrid_table(df, key: str, height: int = 400, cell_style_map: dict = 
                 cell_style_js = _build_cell_style_js(col)
                 if cell_style_js:
                     col_config["cellStyle"] = cell_style_js
+                tooltip_js = _build_tooltip_js(col)
+                if tooltip_js:
+                    col_config["tooltipValueGetter"] = tooltip_js
                 gb.configure_column(col, **col_config)
 
     # Apply cell styles for non-numeric columns
@@ -320,14 +341,23 @@ def render_aggrid_table(df, key: str, height: int = 400, cell_style_map: dict = 
         all_styled_cols.update(cell_style_map.keys())
     if bg_style_map:
         all_styled_cols.update(bg_style_map.keys())
+    if formula_map:
+        all_styled_cols.update(formula_map.keys())
     for col in all_styled_cols:
         if col in df.columns and (not numeric_cols or col not in numeric_cols):
+            col_config = {}
             cell_style_js = _build_cell_style_js(col)
             if cell_style_js:
-                gb.configure_column(col, cellStyle=cell_style_js)
+                col_config["cellStyle"] = cell_style_js
+            tooltip_js = _build_tooltip_js(col)
+            if tooltip_js:
+                col_config["tooltipValueGetter"] = tooltip_js
+            if col_config:
+                gb.configure_column(col, **col_config)
 
     grid_opts = {
         "enableRangeSelection": True,
+        "tooltipShowDelay": 300,
         "statusBar": {
             "statusPanels": [
                 {"statusPanel": "agTotalAndFilteredRowCountComponent", "align": "left"},
@@ -3172,10 +3202,35 @@ def safe_eval_math(expr_str, fx_vars: dict = None) -> float | None:
         return None
 
 
-def process_math_in_df(df, numeric_columns):
+def _is_formula(s: str) -> bool:
+    """True if string is a formula (contains operators or FX vars), not just a plain number."""
+    if not isinstance(s, str):
+        return False
+    s = s.strip().lstrip("=").replace(",", "")
+    if not s:
+        return False
+    try:
+        float(s)
+        return False  # It's just a plain number
+    except ValueError:
+        return True  # Contains operators, FX vars, etc.
+
+
+def _normalize_formula(s: str) -> str:
+    """Ensure formula string starts with '=' prefix."""
+    s = str(s).strip()
+    if not s.startswith("="):
+        s = "=" + s
+    return s
+
+
+def process_math_in_df(df, numeric_columns, editor_key=None):
     """Process math expressions in DataFrame columns from st.data_editor.
     For each specified column, evaluate string math expressions and replace with numeric result.
     Supports FX shortcuts like EURUSD, EURINR.
+
+    If editor_key is provided, formulas are persisted to formulas.json so they can be
+    shown again on re-edit (Excel-like: display value, edit shows formula).
     """
     import pandas as pd
     import re
@@ -3190,13 +3245,63 @@ def process_math_in_df(df, numeric_columns):
             if fx_vars:
                 break
 
+    # Load existing formulas for persistence
+    formulas = {}
+    if editor_key:
+        formulas = load_json(DATA_DIR / "formulas.json", {})
+
     for col in numeric_columns:
         if col not in df.columns:
             continue
-        def _convert(x):
-            if pd.isna(x):
-                return x
-            result = safe_eval_math(x, fx_vars=fx_vars)
-            return result if result is not None else x
-        df[col] = df[col].apply(_convert)
+        for idx in df.index:
+            val = df.at[idx, col]
+            if pd.isna(val):
+                continue
+            str_val = str(val).strip()
+            result = safe_eval_math(str_val, fx_vars=fx_vars)
+            if result is not None:
+                if editor_key and _is_formula(str_val):
+                    # Store the formula (with = prefix)
+                    formulas[f"{editor_key}::{idx}::{col}"] = _normalize_formula(str_val)
+                elif editor_key:
+                    # Plain number — remove any old formula
+                    formulas.pop(f"{editor_key}::{idx}::{col}", None)
+                df.at[idx, col] = result
+            # If result is None, keep original value
+
+    if editor_key:
+        save_json(DATA_DIR / "formulas.json", formulas)
     return df
+
+
+def inject_formulas_for_edit(df, editor_key, numeric_columns):
+    """Replace computed values with stored formulas for editing.
+    This gives Excel-like behavior: cells display numbers, but when user
+    double-clicks to edit, they see the formula (e.g., =500*2).
+    """
+    formulas = load_json(DATA_DIR / "formulas.json", {})
+    for col in numeric_columns:
+        if col not in df.columns:
+            continue
+        for idx in df.index:
+            fkey = f"{editor_key}::{idx}::{col}"
+            if fkey in formulas:
+                df.at[idx, col] = formulas[fkey]
+    return df
+
+
+def get_formula_map(editor_key, num_rows, columns):
+    """Build a formula_map for AgGrid tooltips: {col: {row_idx: "=formula"}}.
+    Used by render_aggrid_table to show formula tooltips on hover.
+    """
+    formulas = load_json(DATA_DIR / "formulas.json", {})
+    formula_map = {}
+    for col in columns:
+        col_formulas = {}
+        for row_idx in range(num_rows):
+            fkey = f"{editor_key}::{row_idx}::{col}"
+            if fkey in formulas:
+                col_formulas[row_idx] = formulas[fkey]
+        if col_formulas:
+            formula_map[col] = col_formulas
+    return formula_map

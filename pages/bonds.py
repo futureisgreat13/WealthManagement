@@ -140,6 +140,7 @@ with tab2:
         })
 
     st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Edit values below — supports math (e.g. 500*2, 1000/EURUSD). Negative New Capital = money withdrawn.</p>', unsafe_allow_html=True)
+    proj_df = utils.inject_formulas_for_edit(proj_df, "bonds_valuations", ["Value (EUR)", "New Capital"])
     edited_vh = st.data_editor(proj_df, use_container_width=True, hide_index=True,
         column_config={
             "Year": st.column_config.NumberColumn(format="%d"),
@@ -147,7 +148,7 @@ with tab2:
             "New Capital": st.column_config.NumberColumn(format="%.0f"),
         },
         disabled=["Year"], key="bonds_valuation_editor")
-    edited_vh = utils.process_math_in_df(edited_vh, ["Value (EUR)", "New Capital"])
+    edited_vh = utils.process_math_in_df(edited_vh, ["Value (EUR)", "New Capital"], editor_key="bonds_valuations")
 
     if st.button("💾 Save Changes", type="primary", key="bonds_val_save"):
         avh = utils.load_json(utils.DATA_DIR / "asset_value_history.json", {})
@@ -218,6 +219,7 @@ with tab3:
     edit_df = pd.DataFrame(edit_rows) if edit_rows else pd.DataFrame(
         columns=["name", "currency", "face_value", "purchase_price", "coupon_rate_pct", "maturity_date", "current_value_eur"])
     st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable — enter your values below</p>', unsafe_allow_html=True)
+    edit_df = utils.inject_formulas_for_edit(edit_df, "bonds_holdings", ["face_value", "purchase_price", "coupon_rate_pct", "current_value_eur"])
     edited = st.data_editor(edit_df, use_container_width=True, hide_index=True, num_rows="dynamic",
         column_config={
             "currency": st.column_config.SelectboxColumn("Currency", options=utils.CURRENCIES),
@@ -225,6 +227,7 @@ with tab3:
             "purchase_price": st.column_config.NumberColumn(format="€%.0f"),
             "current_value_eur": st.column_config.NumberColumn(format="€%.0f"),
         })
+    edited = utils.process_math_in_df(edited, ["face_value", "purchase_price", "coupon_rate_pct", "current_value_eur"], editor_key="bonds_holdings")
 
     if st.button("💾 Save Bonds", type="primary", key="bonds_save"):
         new_items = []
