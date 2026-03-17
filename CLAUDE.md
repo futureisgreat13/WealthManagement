@@ -46,16 +46,19 @@ There is no test suite, linter, or build step. Verification is done manually thr
 
 - **Formatting:** Use `fmt_eur()`, `fmt_eur_short()`, `fmt_pct()` for display values. Use `color_negative()` to red-style negative numbers.
 - **Styling:** Call `inject_bloomberg_css()` for the dark theme. Use `bloomberg_chart_layout()` for Plotly chart config.
-- **Tables:** `render_aggrid_table()` for advanced grids with filtering/editing via st-aggrid.
+- **Tables (read-only):** `render_aggrid_table()` for display-only grids with filtering via st-aggrid.
+- **Tables (editable):** `render_editable_aggrid_table()` for editable grids with per-cell coloring and formula support. Use this instead of `st.data_editor()` for valuation tables. Never create redundant read-only + editable tables — always use a single editable table. Use `st.data_editor()` only when `num_rows="dynamic"` is needed (adding/deleting rows).
+- **Cell coloring:** Apply per-CELL, not per-ROW. Use `build_valuation_style_maps(col_source_map)` to generate bg_style_map and cell_style_map. Colors: yellow bg (`BG_INPUT`) = user input, blue bg (`BG_IBKR`) = IBKR import, default = calculated/formula.
+- **Formulas:** Never use `inject_formulas_for_edit()` with `st.data_editor()` NumberColumns (causes type error). For AgGrid, use `editor_key` param + `get_formula_map()` for tooltips. `process_math_in_df()` evaluates formulas on save.
+- **Page layout:** No redundant tabs. Use sections with `st.subheader()` + `st.divider()` instead of `st.tabs()` for illiquid asset pages. Liquid asset pages keep Positions/Valuations/Edit tabs since they serve distinct purposes.
 - **Session state:** `st.session_state.scenario` controls active scenario (default "Base").
 - **Asset totals:** Each asset class has a `get_[asset]_total_eur(fx_rates)` function. `get_all_totals_eur(fx_rates)` returns a dict of all. `get_net_worth_eur(fx_rates)` for total portfolio.
 - **Projections:** `get_portfolio_projection_v2(scenario, fx_rates, assumptions, years)` for forward projections. Return assumptions and scenario multipliers live in `data/assumptions.json`.
 - **FX:** Rates stored in `data/fx_rates.json`, loaded via `load_fx_rates()`. All cross-currency positions convert to EUR.
-- ** Data is either calculated from some raw data with formulas or input from user or IBKR. if the data is a formula/ logic then show text in white, if a user is responsible to input that data or has dont it historically then keep the background of that cell yellow, if the data is coming from IBKR import then keep the background of that cell blue. Follow this for every single page. Idea is not to have random numbers and let the user know if the number is hardcoded/ or an inputted number vs calculated number.
- - Visualisation - you want to maximize data/space ratio so try to merge tables or delete things when possible. Tables need to be editable instead of a second table to edit numbers in the main table.
- - Maths - any cell where its editable needs to allow maths functions like =500*2/EURUSD.
- - Always fact check when implementing something
-- Ask user questions in the middle of execution if you get stuck aywhere
--Formaating - Numbers need to be in k & m with 0 decimal places for k and 1 decimal place for m. For example 100000 needs to be shown as 100k, 1000000 needs to be shown as 1m.
- - 
+- **Data source coloring:** Data is either calculated from formulas or input from user or IBKR. Formula/calculated cells = white text (default). User-input cells = yellow background. IBKR-imported cells = blue background. This applies per-cell, not per-row. Helps users distinguish hardcoded/input numbers from calculated numbers.
+- **Visualisation:** Maximize data/space ratio — merge tables, delete redundant views when possible. One editable table instead of a display table + edit table.
+- **Maths:** Any editable cell must allow math expressions like =500*2/EURUSD. Use `process_math_in_df()` to evaluate.
+- **Formatting:** Numbers displayed in K & M with 0 decimal places for K and 1 decimal place for M. Example: 100000 → 100K, 1000000 → 1.0M. Use `_eur_formatter_js()` for AgGrid, `fmt_eur_short()` for display.
+- Always fact check when implementing something.
+- Ask user questions in the middle of execution if stuck.
 

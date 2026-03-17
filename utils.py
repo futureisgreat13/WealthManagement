@@ -87,6 +87,9 @@ C_NEUTRAL = "#D4D4D4"    # Neutral numbers
 C_LABEL = "#AAAAAA"      # Labels, secondary text
 C_AMBER = "#FF6600"      # Dark orange accent/hover
 C_GOLD = "#FFD700"       # Manual input highlight
+BG_INPUT = "#3d3200"     # Yellow-tinted bg for user-input cells
+BG_IBKR = "#1a2744"      # Blue-tinted bg for IBKR-imported cells
+C_IBKR = "#60a5fa"       # Light blue text for IBKR cells
 
 
 def inject_bloomberg_css():
@@ -446,6 +449,284 @@ def render_aggrid_table(df, key: str, height: int = 400, cell_style_map: dict = 
         key=key,
         **kwargs,
     )
+
+
+def render_editable_aggrid_table(df, key: str, height: int = 400,
+                                 editable_cols: list = None,
+                                 cell_style_map: dict = None,
+                                 numeric_cols: list = None,
+                                 highlight_total_row: bool = False,
+                                 bg_style_map: dict = None,
+                                 formula_map: dict = None,
+                                 editor_key: str = None,
+                                 **kwargs):
+    """Render an editable DataFrame using AG-Grid.
+
+    Like render_aggrid_table but with editable columns and formula support.
+    Editable columns accept formula strings (e.g., =500*2) — on save,
+    process_math_in_df() evaluates them. Tooltips show stored formulas on hover.
+    Double-click a cell to edit; if a formula exists it's shown in edit mode.
+
+    Args:
+        editable_cols: Column names that are editable. Others are read-only.
+        editor_key: Key for formula persistence in formulas.json.
+        (other args same as render_aggrid_table)
+
+    Returns:
+        AgGrid result object. Access .data for the edited DataFrame.
+    """
+    import pandas as pd
+    editable_cols = editable_cols or []
+
+    # Build a formula lookup for JS-side: {col: {row_idx: "=formula"}}
+    # This drives both tooltips AND edit-mode formula display
+    formulas_js = {}
+    if editor_key:
+        stored = load_json(DATA_DIR / "formulas.json", {})
+        for col in editable_cols:
+            col_formulas = {}
+            for row_idx in range(len(df)):
+                fkey = f"{editor_key}::{row_idx}::{col}"
+                if fkey in stored:
+                    col_formulas[str(row_idx)] = stored[fkey]
+            if col_formulas:
+                formulas_js[col] = col_formulas
+
+    # Merge editor_key formulas into formula_map for tooltips
+    if formula_map is None:
+        formula_map = {}
+    for col, fmap in formulas_js.items():
+        if col not in formula_map:
+            formula_map[col] = {}
+        for idx, f in fmap.items():
+            formula_map[col][int(idx)] = f
+
+    gb = GridOptionsBuilder.from_dataframe(df)
+    gb.configure_default_column(
+        sortable=True, filterable=True, resizable=True, minWidth=65,
+    )
+
+    first_col = df.columns[0] if len(df.columns) > 0 else None
+    if first_col and df[first_col].dtype == object:
+        gb.configure_column(first_col, pinned="left", minWidth=130, maxWidth=200)
+
+    # --- Cell style JS builder (same as render_aggrid_table) ---
+    def _build_cell_style_js(col):
+        parts = []
+        if cell_style_map and col in cell_style_map:
+            input_rows = [f'"{idx}"' for idx, stype in cell_style_map[col].items() if stype == "input"]
+            ibkr_rows = [f'"{idx}"' for idx, stype in cell_style_map[col].items() if stype == "ibkr"]
+            if input_rows:
+                parts.append(f"var inputRows = new Set([{','.join(input_rows)}]);")
+                parts.append(f"if (inputRows.has(String(params.node.rowIndex))) {{ style['color'] = '{C_GOLD}'; }}")
+            if ibkr_rows:
+                parts.append(f"var ibkrRows = new Set([{','.join(ibkr_rows)}]);")
+                parts.append(f"if (ibkrRows.has(String(params.node.rowIndex))) {{ style['color'] = '{C_IBKR}'; }}")
+        if bg_style_map and col in bg_style_map:
+            bg_entries = [(f'"{idx}"', color) for idx, color in bg_style_map[col].items() if color]
+            if bg_entries:
+                bg_map_str = ",".join(f'{idx}: "{color}"' for idx, color in bg_entries)
+                parts.append(f"var bgMap = {{{bg_map_str}}};")
+                parts.append("var bg = bgMap[String(params.node.rowIndex)]; if (bg) { style['backgroundColor'] = bg; }")
+        if not parts:
+            return None
+        js_body = "var style = {};\n" + "\n".join(parts) + "\nreturn Object.keys(style).length > 0 ? style : null;"
+        return JsCode(f"function(params) {{ {js_body} }}")
+
+    def _build_tooltip_js(col):
+        if not formula_map or col not in formula_map:
+            return None
+        entries = formula_map[col]
+        if not entries:
+            return None
+        map_str = ",".join(f'"{idx}": "{formula}"' for idx, formula in entries.items())
+        return JsCode(f"""function(params) {{
+            var fmap = {{{map_str}}};
+            var f = fmap[String(params.node.rowIndex)];
+            return f ? f : null;
+        }}""")
+
+    # --- Configure columns ---
+    eur_fmt = _eur_formatter_js()
+
+    for col in df.columns:
+        col_config = {}
+        is_editable = col in editable_cols
+        is_numeric = numeric_cols and col in numeric_cols
+
+        if is_editable:
+            col_config["editable"] = True
+
+        if is_numeric:
+            col_config["valueFormatter"] = eur_fmt
+            # Don't set type=numericColumn for editable cols — allows formula string input
+            if not is_editable:
+                col_config["type"] = ["numericColumn"]
+
+        cell_style_js = _build_cell_style_js(col)
+        if cell_style_js:
+            col_config["cellStyle"] = cell_style_js
+
+        tooltip_js = _build_tooltip_js(col)
+        if tooltip_js:
+            col_config["tooltipValueGetter"] = tooltip_js
+
+        # For editable columns with formulas: show formula on double-click
+        if is_editable and col in formulas_js and formulas_js[col]:
+            fmap_entries = formulas_js[col]
+            fmap_str = ",".join(f'"{k}": "{v}"' for k, v in fmap_entries.items())
+            col_config["valueGetter"] = JsCode(f"""function(params) {{
+                return params.data['{col}'];
+            }}""")
+            col_config["valueSetter"] = JsCode(f"""function(params) {{
+                params.data['{col}'] = params.newValue;
+                return true;
+            }}""")
+            # Use valueFormatter that shows formula in edit mode
+            col_config["valueFormatter"] = JsCode(f"""function(params) {{
+                if (params.value == null || params.value === '') return '';
+                var v = params.value;
+                if (typeof v === 'string' && (v.indexOf('=') === 0 || isNaN(v))) return v;
+                v = Number(v);
+                if (isNaN(v) || v === 0) return v === 0 ? '' : String(params.value);
+                var neg = v < 0;
+                var abs = Math.abs(v);
+                var formatted;
+                if (abs >= 1e9) formatted = '\\u20AC' + (abs / 1e9).toFixed(1) + 'B';
+                else if (abs >= 1e6) formatted = '\\u20AC' + (abs / 1e6).toFixed(1) + 'M';
+                else if (abs >= 1e3) formatted = '\\u20AC' + (abs / 1e3).toFixed(0) + 'K';
+                else formatted = '\\u20AC' + abs.toFixed(0);
+                return neg ? '-' + formatted : formatted;
+            }}""")
+            # cellEditorParams to show formula when entering edit mode
+            col_config["cellEditorSelector"] = JsCode(f"""function(params) {{
+                var fmap = {{{fmap_str}}};
+                var f = fmap[String(params.node.rowIndex)];
+                if (f) {{
+                    params.data['{col}'] = f;
+                }}
+                return undefined;
+            }}""")
+
+        if col_config:
+            gb.configure_column(col, **col_config)
+
+    grid_opts = {
+        "enableRangeSelection": True,
+        "tooltipShowDelay": 300,
+        "statusBar": {
+            "statusPanels": [
+                {"statusPanel": "agTotalAndFilteredRowCountComponent", "align": "left"},
+                {"statusPanel": "agAggregationComponent", "align": "right"},
+            ]
+        },
+        "singleClickEdit": False,
+    }
+    if highlight_total_row:
+        grid_opts["getRowStyle"] = JsCode(f"""
+            function(params) {{
+                if (params.data && (params.data['Asset Class'] === 'TOTAL' || params.data['Name'] === 'TOTAL')) {{
+                    return {{'fontWeight': 'bold', 'backgroundColor': '{BG_HEADER}', 'borderTop': '1px solid {C_ORANGE}', 'color': '{C_ORANGE}'}};
+                }}
+                return null;
+            }}
+        """)
+    gb.configure_grid_options(**grid_opts)
+
+    grid_options = gb.build()
+
+    custom_css = {
+        ".ag-root-wrapper": {
+            "background-color": f"{BG_BLACK} !important",
+            "border": f"1px solid {BORDER} !important",
+            "border-radius": "0 !important",
+            "font-size": "12px !important",
+        },
+        ".ag-header": {
+            "background-color": f"{BG_HEADER} !important",
+            "border-bottom": f"1px solid {C_ORANGE}33 !important",
+            "min-height": "28px !important",
+            "height": "28px !important",
+        },
+        ".ag-header-cell": {"padding": "0 6px !important"},
+        ".ag-header-cell-label": {
+            "color": f"{C_ORANGE} !important",
+            "font-size": "11px !important",
+            "font-weight": "600 !important",
+            "letter-spacing": "0.3px !important",
+        },
+        ".ag-row": {
+            "background-color": f"{BG_BLACK} !important",
+            "color": f"{C_NEUTRAL} !important",
+            "border-bottom": f"1px solid {GRID_LINE} !important",
+            "font-size": "12px !important",
+            "height": "26px !important",
+        },
+        ".ag-row-hover": {"background-color": f"{BG_HOVER} !important"},
+        ".ag-cell": {"padding": "0 6px !important", "line-height": "26px !important"},
+        ".ag-cell-edit-wrapper": {
+            "background-color": f"{BG_PANEL} !important",
+            "color": f"{C_GOLD} !important",
+        },
+        ".ag-range-selection": {
+            "background-color": "rgba(255, 140, 0, 0.15) !important",
+            "border": f"1px solid {C_ORANGE} !important",
+        },
+        ".ag-status-bar": {
+            "background-color": f"{BG_HEADER} !important",
+            "color": f"{C_LABEL} !important",
+            "border-top": f"1px solid {BORDER} !important",
+            "font-size": "11px !important",
+            "min-height": "24px !important",
+        },
+        ".ag-status-bar-part": {"color": f"{C_LABEL} !important"},
+        ".ag-pinned-left-cols-container .ag-cell": {
+            "color": f"{C_LABEL} !important",
+            "font-weight": "500 !important",
+        },
+    }
+
+    return AgGrid(
+        df,
+        gridOptions=grid_options,
+        height=height,
+        theme="streamlit",
+        custom_css=custom_css,
+        update_mode=GridUpdateMode.VALUE_CHANGED,
+        enable_enterprise_modules=True,
+        allow_unsafe_jscode=True,
+        key=key,
+        **kwargs,
+    )
+
+
+def build_valuation_style_maps(col_source_map):
+    """Build bg_style_map and cell_style_map from a data-source map.
+
+    Args:
+        col_source_map: {col_name: {row_idx: "input"|"ibkr"|"formula"}}
+
+    Returns:
+        (bg_style_map, cell_style_map) for use with render_editable_aggrid_table.
+    """
+    bg_style_map = {}
+    cell_style_map = {}
+    for col, row_map in col_source_map.items():
+        bg_col = {}
+        style_col = {}
+        for row_idx, source in row_map.items():
+            if source == "input":
+                bg_col[row_idx] = BG_INPUT
+                style_col[row_idx] = "input"
+            elif source == "ibkr":
+                bg_col[row_idx] = BG_IBKR
+                style_col[row_idx] = "ibkr"
+            # "formula" gets no override (default dark bg, default text color)
+        if bg_col:
+            bg_style_map[col] = bg_col
+        if style_col:
+            cell_style_map[col] = style_col
+    return bg_style_map, cell_style_map
 
 
 def load_fx_rates() -> dict:
