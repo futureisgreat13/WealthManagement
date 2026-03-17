@@ -3287,6 +3287,10 @@ def inject_formulas_for_edit(df, editor_key, numeric_columns):
             fkey = f"{editor_key}::{idx}::{col}"
             if fkey in formulas:
                 df.at[idx, col] = formulas[fkey]
+    # Cast to object dtype so TextColumn is compatible with numeric data
+    for col in numeric_columns:
+        if col in df.columns:
+            df[col] = df[col].astype(object)
     return df
 
 
