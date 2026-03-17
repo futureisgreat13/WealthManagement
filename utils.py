@@ -7,6 +7,8 @@ import streamlit as st
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, JsCode
 
 DATA_DIR = Path(__file__).parent / "data"
+USERS_DIR = DATA_DIR / "users"
+TEMPLATE_DIR = DATA_DIR / "_template"
 
 ASSET_CLASSES = [
     "Equity", "REITs", "Real Estate",
@@ -438,7 +440,23 @@ def to_eur(value: float, currency: str, fx_rates: dict) -> float:
     return value / rate
 
 
+def _get_effective_path(path: Path) -> Path:
+    """Remap a DATA_DIR path to the logged-in user's isolated directory."""
+    user_dir = st.session_state.get("user_data_dir")
+    if user_dir is None:
+        return path
+    try:
+        relative = path.relative_to(DATA_DIR)
+    except ValueError:
+        return path
+    # Don't remap paths already inside users/ or _template/ or _backup
+    if relative.parts and relative.parts[0] in ("users", "_template", "_backup_premigration"):
+        return path
+    return Path(user_dir) / relative
+
+
 def load_json(path: Path, default=None):
+    path = _get_effective_path(path)
     if path.exists():
         try:
             with open(path, "r") as f:
@@ -449,9 +467,89 @@ def load_json(path: Path, default=None):
 
 
 def save_json(path: Path, data) -> None:
+    path = _get_effective_path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
+
+
+def setup_user_data_dir(email: str, name: str = "") -> Path:
+    """Initialize user data directory. Copies existing data for owner, blank templates for others."""
+    import shutil
+
+    safe_email = email.lower().strip()
+    if ".." in safe_email or "/" in safe_email or "\\" in safe_email:
+        raise ValueError(f"Invalid email for directory name: {email}")
+
+    user_dir = USERS_DIR / safe_email
+
+    if not user_dir.exists():
+        user_dir.mkdir(parents=True, exist_ok=True)
+
+        # First user ever? Copy actual data (owner). Otherwise copy blank templates.
+        any_existing_users = USERS_DIR.exists() and any(
+            d.is_dir() and d.name != safe_email for d in USERS_DIR.iterdir()
+            if not d.name.startswith(".")
+        )
+
+        if not any_existing_users and not TEMPLATE_DIR.exists():
+            # First user (owner) — copy actual data files, then create templates
+            for json_file in DATA_DIR.glob("*.json"):
+                shutil.copy2(json_file, user_dir / json_file.name)
+            # Create blank templates for future users
+            _create_blank_templates()
+        else:
+            # Subsequent user — copy from templates
+            if TEMPLATE_DIR.exists():
+                for json_file in TEMPLATE_DIR.glob("*.json"):
+                    shutil.copy2(json_file, user_dir / json_file.name)
+
+    # Write/update profile
+    profile_path = user_dir / "_profile.json"
+    profile = {}
+    if profile_path.exists():
+        try:
+            with open(profile_path, "r") as f:
+                profile = json.load(f)
+        except Exception:
+            pass
+
+    profile["email"] = email
+    profile["name"] = name
+    profile["last_login"] = datetime.now().isoformat()
+    if "created" not in profile:
+        profile["created"] = datetime.now().isoformat()
+
+    with open(profile_path, "w") as f:
+        json.dump(profile, f, indent=2)
+
+    st.session_state["user_data_dir"] = user_dir
+    return user_dir
+
+
+def _create_blank_templates():
+    """Create blank/default JSON files for new users."""
+    TEMPLATE_DIR.mkdir(parents=True, exist_ok=True)
+    # Files that should default to empty lists
+    list_files = [
+        "public_stocks.json", "real_estate.json", "private_equity.json",
+        "funds.json", "business.json", "bonds.json", "precious_metals.json",
+        "cash.json", "debt.json", "investment_plan.json",
+    ]
+    # Files that should default to empty dicts
+    dict_files = [
+        "assumptions.json", "fx_rates.json", "symbol_classifications.json",
+        "dividend_config.json", "asset_value_history.json", "asset_history.json",
+        "cashflow.json", "ibkr_capital_flows.json", "ibkr_database.json",
+        "optiver.json", "rules_notes.json", "todos.json",
+        "historical_totals.json", "overview_settings.json",
+    ]
+    for fname in list_files:
+        with open(TEMPLATE_DIR / fname, "w") as f:
+            json.dump([], f)
+    for fname in dict_files:
+        with open(TEMPLATE_DIR / fname, "w") as f:
+            json.dump({}, f)
 
 
 def new_id() -> str:

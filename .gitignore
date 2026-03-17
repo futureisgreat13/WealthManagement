@@ -1,5 +1,8 @@
 .streamlit/secrets.toml
+.streamlit/google_credentials.json
+.streamlit/_pkce/
 data/users/
 data/_backup_premigration/
+data/_template/
 __pycache__/
 *.pyc
