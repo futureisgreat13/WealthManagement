@@ -864,6 +864,65 @@ def fetch_benchmark_returns(ticker: str, currency: str = "USD") -> dict:
         return {}
 
 
+@st.cache_data(ttl=900)
+def fetch_benchmark_yearly(ticker: str, currency: str = "USD", start_year: int = 2018) -> dict:
+    """Fetch year-end closing prices for a benchmark, converted to EUR.
+
+    Returns {year: price_eur, ...} for each year from start_year to now.
+    Used for overlaying benchmarks on the Performance chart.
+    """
+    try:
+        import yfinance as yf
+        from datetime import datetime
+
+        now = datetime.now()
+        data = yf.download(ticker, start=f"{start_year}-01-01", progress=False)
+        if data.empty:
+            return {}
+
+        close = data["Close"].squeeze() if hasattr(data["Close"], "squeeze") else data["Close"]
+
+        # Get EUR/X rates for conversion
+        fx_close = None
+        if currency != "EUR":
+            fx_ticker = f"EUR{currency}=X"
+            fx_data = yf.download(fx_ticker, start=f"{start_year}-01-01", progress=False)
+            if not fx_data.empty:
+                fx_close = fx_data["Close"].squeeze() if hasattr(fx_data["Close"], "squeeze") else fx_data["Close"]
+
+        result = {}
+        for yr in range(start_year, now.year + 1):
+            # Pick last trading day of December (or latest available for current year)
+            if yr == now.year:
+                yr_data = close[close.index.year == yr]
+            else:
+                yr_data = close[(close.index.year == yr) & (close.index.month == 12)]
+                if yr_data.empty:
+                    yr_data = close[close.index.year == yr]
+            if yr_data.empty:
+                continue
+
+            price = float(yr_data.iloc[-1])
+
+            # Convert to EUR
+            if fx_close is not None:
+                if yr == now.year:
+                    fx_yr = fx_close[fx_close.index.year == yr]
+                else:
+                    fx_yr = fx_close[(fx_close.index.year == yr) & (fx_close.index.month == 12)]
+                    if fx_yr.empty:
+                        fx_yr = fx_close[fx_close.index.year == yr]
+                if not fx_yr.empty:
+                    fx_rate = float(fx_yr.iloc[-1])
+                    if fx_rate > 0:
+                        price = price / fx_rate
+
+            result[yr] = price
+        return result
+    except Exception:
+        return {}
+
+
 def to_eur(value: float, currency: str, fx_rates: dict) -> float:
     if currency == "EUR":
         return value
@@ -872,6 +931,87 @@ def to_eur(value: float, currency: str, fx_rates: dict) -> float:
     if rate == 0:
         return value
     return value / rate
+
+
+def auto_refresh_fx_rates():
+    """Auto-fetch live FX rates on app load, throttled to every 15 minutes."""
+    from datetime import datetime, timedelta
+    now = datetime.now()
+    last = st.session_state.get("_fx_last_refresh")
+    if last and (now - last) < timedelta(minutes=15):
+        return
+    live = fetch_live_fx_rates()
+    if live:
+        existing = load_fx_rates()
+        existing.update(live)
+        save_fx_rates(existing)
+        st.session_state["_fx_last_refresh"] = now
+
+
+@st.cache_data(ttl=900)
+def fetch_live_stock_prices() -> dict:
+    """Fetch current prices for all tickers in public_stocks.json.
+
+    Returns {ticker: {"price": float, "currency": str}, ...}.
+    """
+    try:
+        import yfinance as yf
+        positions = load_json(DATA_DIR / "public_stocks.json", [])
+        ticker_currency = {}
+        for p in positions:
+            t = p.get("ticker", "").strip()
+            if t:
+                ticker_currency[t] = p.get("currency", "USD")
+        if not ticker_currency:
+            return {}
+        tickers = list(ticker_currency.keys())
+        data = yf.download(tickers, period="1d", progress=False, threads=True)
+        if data.empty:
+            return {}
+        result = {}
+        for t in tickers:
+            try:
+                if len(tickers) == 1:
+                    price = float(data["Close"].iloc[-1])
+                else:
+                    price = float(data["Close"][t].iloc[-1])
+                if price > 0:
+                    result[t] = {"price": price, "currency": ticker_currency[t]}
+            except (KeyError, IndexError, TypeError):
+                continue
+        return result
+    except Exception:
+        return {}
+
+
+def auto_refresh_stock_prices():
+    """Auto-update stock positions with live prices, throttled to every 15 minutes."""
+    from datetime import datetime, timedelta
+    now = datetime.now()
+    last = st.session_state.get("_stocks_last_refresh")
+    if last and (now - last) < timedelta(minutes=15):
+        return
+    prices = fetch_live_stock_prices()
+    if not prices:
+        return
+    fx = load_fx_rates()
+    positions = load_json(DATA_DIR / "public_stocks.json", [])
+    changed = False
+    for p in positions:
+        t = p.get("ticker", "").strip()
+        if t in prices:
+            qty = p.get("quantity", 0)
+            if qty > 0:
+                live = prices[t]
+                value_local = live["price"] * qty
+                p["value_eur"] = round(to_eur(value_local, live["currency"], fx), 2)
+                cost = p.get("cost_eur", 0)
+                p["return_pct"] = round((p["value_eur"] - cost) / cost * 100, 2) if cost > 0 else 0
+                p["last_updated"] = now.strftime("%Y-%m-%d %H:%M")
+                changed = True
+    if changed:
+        save_json(DATA_DIR / "public_stocks.json", positions)
+    st.session_state["_stocks_last_refresh"] = now
 
 
 def _get_effective_path(path: Path) -> Path:
@@ -3610,10 +3750,10 @@ def inject_formulas_for_edit(df, editor_key, numeric_columns):
             fkey = f"{editor_key}::{idx}::{col}"
             if fkey in formulas:
                 df.at[idx, col] = formulas[fkey]
-    # Cast to object dtype so TextColumn is compatible with numeric data
+    # Cast to string dtype so TextColumn is compatible with numeric data
     for col in numeric_columns:
         if col in df.columns:
-            df[col] = df[col].astype(object)
+            df[col] = df[col].astype(str)
     return df
 
 

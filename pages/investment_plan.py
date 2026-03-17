@@ -107,11 +107,9 @@ with tab1:
     edited_plan = st.data_editor(
         plan_df, use_container_width=True, hide_index=True,
         column_config={
-            "Current %": st.column_config.NumberColumn(format="%.1f%%"),
-            "Target %": st.column_config.NumberColumn(format="%.1f%%"),
-            "Diff %": st.column_config.NumberColumn(format="%+.1f%%"),
-            "Div Yield %": st.column_config.NumberColumn(format="%.2f%%"),
-            "Default Invest/yr": st.column_config.NumberColumn(format="€%.0f"),
+            "Target %": st.column_config.TextColumn("Target %"),
+            "Div Yield %": st.column_config.TextColumn("Div Yield %"),
+            "Default Invest/yr": st.column_config.TextColumn("Default Invest/yr"),
         },
         disabled=["Asset Class", "Liquidity", f"Value ({last_ye_yr})", "Current %",
                   "Diff %", "Est. Dividends"],
@@ -244,8 +242,8 @@ with tab2:
             total_div_row[yr_str] = sum(r.get(yr_str, 0) for r in div_proj_rows)
         div_proj_rows.append(total_div_row)
         div_df = pd.DataFrame(div_proj_rows)
-        div_col_config = {yr_str: st.column_config.NumberColumn(format="€%.0f") for yr_str in plan_year_strs}
-        div_col_config["Yield %"] = st.column_config.NumberColumn(format="%.2f%%")
+        div_col_config = {yr_str: st.column_config.TextColumn() for yr_str in plan_year_strs}
+        div_col_config["Yield %"] = st.column_config.TextColumn()
         utils.render_aggrid_table(div_df, key="aggrid_div_projection",
                                   height=min(350, max(200, len(div_proj_rows) * 32 + 40)),
                                   numeric_cols=plan_year_strs,

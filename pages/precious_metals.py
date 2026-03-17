@@ -100,28 +100,37 @@ with tab2:
     proj_df = pd.DataFrame(rows)
     orig_df = proj_df.copy()
 
-    # Build per-cell coloring
-    col_source_map = {"Value (EUR)": {}, "New Capital": {}}
-    for i, yr in enumerate(all_years):
-        if value_is_actual[i]:
-            col_source_map["Value (EUR)"][i] = "input"
-        cap = get_new_capital(yr)
-        if cap != 0 and yr < utils.CURRENT_YEAR:
-            col_source_map["New Capital"][i] = "input"
+    # Styled read-only display with yellow highlighting for actual values
+    display_df = proj_df.copy()
+    display_df["Year"] = display_df["Year"].astype(int)
 
-    bg_style_map, cell_style_map = utils.build_valuation_style_maps(col_source_map)
-    formula_map = utils.get_formula_map("precious_metals_valuations", len(proj_df), ["Value (EUR)", "New Capital"])
+    def highlight_actuals(row):
+        idx = display_df.index.get_loc(row.name)
+        if idx < len(value_is_actual) and value_is_actual[idx]:
+            return ["background-color: rgba(255, 200, 0, 0.25); color: #ffd700"] * len(row)
+        return [""] * len(row)
 
-    st.caption("🟡 Yellow = user input. Default = formula. Double-click to edit. Supports math (e.g. =500*2).")
-    grid_result = utils.render_editable_aggrid_table(
-        proj_df, key="metals_valuation_aggrid",
-        editable_cols=["Value (EUR)", "New Capital"],
-        numeric_cols=["Value (EUR)", "New Capital"],
-        bg_style_map=bg_style_map, cell_style_map=cell_style_map,
-        formula_map=formula_map, editor_key="precious_metals_valuations",
-        height=min(500, max(200, len(rows) * 28 + 40)),
-    )
-    edited = grid_result.data
+    styled = display_df.style.apply(highlight_actuals, axis=1).format({
+        "Year": "{:.0f}", "Value (EUR)": "€{:,.0f}", "New Capital": "{:,.0f}",
+    })
+    st.caption("🟡 Yellow = actual values (IBKR/manual). White = formula: V(N-1) × (1+return%) + New Capital.")
+    st.dataframe(styled, use_container_width=True, hide_index=True,
+        column_config={
+            "Value (EUR)": st.column_config.TextColumn(
+                help="🟡 Yellow = actual (from IBKR or manual entry)\n⚪ White = formula"),
+            "New Capital": st.column_config.TextColumn(
+                help="Source priority: Manual override > IBKR import > Investment Plan default (€{:,.0f}/yr)".format(planned_metals)),
+        })
+
+    st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Edit values below — supports math (e.g. 500*2, 1000/EURUSD). Negative New Capital = money withdrawn.</p>', unsafe_allow_html=True)
+    proj_df = utils.inject_formulas_for_edit(proj_df, "precious_metals_valuations", ["Value (EUR)", "New Capital"])
+    edited = st.data_editor(proj_df, use_container_width=True, hide_index=True,
+        column_config={
+            "Year": st.column_config.TextColumn("Year"),
+            "Value (EUR)": st.column_config.TextColumn("Value (EUR)"),
+            "New Capital": st.column_config.TextColumn("New Capital"),
+        },
+        disabled=["Year"], key="metals_valuation_editor")
     edited = utils.process_math_in_df(edited, ["Value (EUR)", "New Capital"], editor_key="precious_metals_valuations")
 
     if st.button("💾 Save Changes", type="primary", key="metals_val_save"):
@@ -193,13 +202,14 @@ with tab3:
     edit_df = pd.DataFrame(edit_rows) if edit_rows else pd.DataFrame(
         columns=["ticker", "name", "currency", "quantity", "cost_eur", "value_eur", "net_div_eur"])
 
-    st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable — supports math (e.g. =500*2, 1000/EURUSD)</p>', unsafe_allow_html=True)
+    st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable — enter your values below</p>', unsafe_allow_html=True)
+    edit_df = utils.inject_formulas_for_edit(edit_df, "precious_metals_holdings", ["quantity", "cost_eur", "value_eur", "net_div_eur"])
     edited = st.data_editor(edit_df, use_container_width=True, hide_index=True, num_rows="dynamic",
         column_config={
             "currency": st.column_config.SelectboxColumn("Currency", options=utils.CURRENCIES),
-            "cost_eur": st.column_config.NumberColumn("Cost (EUR)", format="€%.0f"),
-            "value_eur": st.column_config.NumberColumn("Value (EUR)", format="€%.0f"),
-            "net_div_eur": st.column_config.NumberColumn("Div/yr", format="€%.0f"),
+            "cost_eur": st.column_config.TextColumn("Cost (EUR)"),
+            "value_eur": st.column_config.TextColumn("Value (EUR)"),
+            "net_div_eur": st.column_config.TextColumn("Div/yr"),
         })
     edited = utils.process_math_in_df(edited, ["quantity", "cost_eur", "value_eur", "net_div_eur"], editor_key="precious_metals_holdings")
 

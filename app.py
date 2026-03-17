@@ -3,10 +3,10 @@ import json
 import hashlib
 import base64
 import os
-import tempfile
 import requests
 from pathlib import Path
-from utils import setup_user_data_dir
+from datetime import datetime, timedelta
+from utils import setup_user_data_dir, auto_refresh_fx_rates, auto_refresh_stock_prices
 
 st.set_page_config(
     page_title="Wealth Dashboard",
@@ -27,6 +27,10 @@ SCOPES         = "openid email profile"
 # Directory to persist PKCE verifiers across redirects
 _PKCE_DIR = Path(__file__).parent / ".streamlit" / "_pkce"
 _PKCE_DIR.mkdir(parents=True, exist_ok=True)
+
+# Directory for persistent sessions (survives page refresh)
+_SESSION_DIR = Path(__file__).parent / ".streamlit" / "_sessions"
+_SESSION_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _generate_pkce():
@@ -89,6 +93,43 @@ def _exchange_code(code: str, state: str) -> dict:
     return user_resp.json()
 
 
+# ── File-based session persistence ─────────────────────────────────
+def _save_session(user_info: dict):
+    """Save user session to disk so it survives page refresh & server restart."""
+    session_data = {
+        "email": user_info["email"],
+        "name": user_info.get("name", ""),
+        "picture": user_info.get("picture", ""),
+        "created": datetime.now().isoformat(),
+        "expires": (datetime.now() + timedelta(days=30)).isoformat(),
+    }
+    session_file = _SESSION_DIR / "active_session.json"
+    session_file.write_text(json.dumps(session_data, indent=2))
+
+
+def _load_session() -> dict:
+    """Load saved session from disk. Returns user_info dict or empty dict."""
+    session_file = _SESSION_DIR / "active_session.json"
+    if not session_file.exists():
+        return {}
+    try:
+        data = json.loads(session_file.read_text())
+        # Check expiry
+        if datetime.fromisoformat(data["expires"]) < datetime.now():
+            session_file.unlink()
+            return {}
+        return data
+    except (json.JSONDecodeError, KeyError, ValueError):
+        return {}
+
+
+def _clear_session():
+    """Delete saved session on sign out."""
+    session_file = _SESSION_DIR / "active_session.json"
+    if session_file.exists():
+        session_file.unlink()
+
+
 # ── Auth check ──────────────────────────────────────────────────────
 if "connected" not in st.session_state:
     st.session_state["connected"] = False
@@ -105,6 +146,20 @@ if auth_code and not st.session_state["connected"]:
             "email": user_info["email"],
             "name": user_info.get("name", ""),
             "picture": user_info.get("picture", ""),
+        }
+        # Persist session to disk so it survives page refresh
+        _save_session(user_info)
+        st.rerun()
+
+# Check for existing session on disk (persistent login across refreshes)
+if not st.session_state["connected"]:
+    saved = _load_session()
+    if saved:
+        st.session_state["connected"] = True
+        st.session_state["user_info"] = {
+            "email": saved["email"],
+            "name": saved.get("name", ""),
+            "picture": saved.get("picture", ""),
         }
         st.rerun()
 
@@ -172,6 +227,7 @@ with st.sidebar:
     st.markdown(f"**{user_name}**")
     st.caption(user_email)
     if st.button("Sign Out", use_container_width=True):
+        _clear_session()
         st.session_state["connected"] = False
         st.session_state.pop("user_info", None)
         st.session_state.pop("user_data_dir", None)
@@ -179,6 +235,10 @@ with st.sidebar:
 
 if "scenario" not in st.session_state:
     st.session_state.scenario = "Base"
+
+# Auto-refresh market data (runs on every app load, throttled to 15 min)
+auto_refresh_fx_rates()
+auto_refresh_stock_prices()
 
 pages = {
     "": [st.Page("pages/overview.py", title="Overview", icon="🏠")],

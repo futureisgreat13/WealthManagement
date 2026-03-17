@@ -211,7 +211,7 @@ if existing_flows:
         edited = st.data_editor(edit_df, use_container_width=True, hide_index=True,
             num_rows="dynamic",
             column_config={
-                "Net Capital (EUR)": st.column_config.NumberColumn(format="€%.0f"),
+                "Net Capital (EUR)": st.column_config.TextColumn("Net Capital (EUR)"),
                 "Asset Class": st.column_config.SelectboxColumn(
                     options=["Equity", "REIT", "Precious Metals", "Bond"]),
             },

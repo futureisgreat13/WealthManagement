@@ -191,7 +191,7 @@ table_height = min(800, max(300, n_rows * 28 + 40))
 st.dataframe(styled, use_container_width=True, hide_index=True, height=table_height,
     column_config={
         "Category": st.column_config.TextColumn(width="small"),
-        **{y: st.column_config.NumberColumn() for y in years},
+        **{y: st.column_config.TextColumn() for y in years},
     })
 
 # =============================================================================
@@ -232,7 +232,7 @@ with st.expander("Edit Manual Values", expanded=False):
     edited = st.data_editor(edit_df, use_container_width=True, hide_index=True,
         column_config={
             "Category": st.column_config.TextColumn(width="small"),
-            **{y: st.column_config.NumberColumn(format="%.0f") for y in years},
+            **{y: st.column_config.TextColumn(y) for y in years},
         },
         disabled=["Category"],
         key="cashflow_unified_editor")

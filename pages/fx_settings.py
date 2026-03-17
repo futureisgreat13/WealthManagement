@@ -11,6 +11,9 @@ st.markdown('<style>div[data-testid="stMetric"]{padding:8px 0}div.stDataFrame,di
 
 # --- FX Rates ---
 st.subheader("FX Rates (EUR/X)")
+_last_fx = st.session_state.get("_fx_last_refresh")
+if _last_fx:
+    st.caption(f"Auto-updated: {_last_fx.strftime('%Y-%m-%d %H:%M')}")
 fx = utils.load_fx_rates()
 pairs = ["EURUSD", "EURINR", "EURGBP", "EURHKD", "EURJPY", "EURCAD", "EURAUD", "EURCHF"]
 
@@ -78,10 +81,10 @@ liquid_df = utils.inject_formulas_for_edit(liquid_df, "fx_scenario_multipliers",
 st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable — enter scenario return rates</p>', unsafe_allow_html=True)
 edited_liquid = st.data_editor(liquid_df, use_container_width=True, hide_index=True, key="liquid_assumptions_editor",
     column_config={
-        "Super Bear %": st.column_config.NumberColumn(format="%.1f%%"),
-        "Bear %": st.column_config.NumberColumn(format="%.1f%%"),
-        "Base %": st.column_config.NumberColumn(format="%.1f%%"),
-        "Bull %": st.column_config.NumberColumn(format="%.1f%%"),
+        "Super Bear %": st.column_config.TextColumn("Super Bear %"),
+        "Bear %": st.column_config.TextColumn("Bear %"),
+        "Base %": st.column_config.TextColumn("Base %"),
+        "Bull %": st.column_config.TextColumn("Bull %"),
     },
     disabled=["Asset Class"])
 edited_liquid = utils.process_math_in_df(edited_liquid, ["Super Bear %", "Bear %", "Base %", "Bull %"], editor_key="fx_scenario_multipliers")
@@ -141,13 +144,13 @@ for s in utils.SCENARIOS:
 irr_df = pd.DataFrame(irr_rows)
 st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable — multipliers + optional fixed % overrides (leave empty to use multipliers)</p>', unsafe_allow_html=True)
 col_config = {
-    "PE IRR ×": st.column_config.NumberColumn(format="%.2f"),
-    "PE Prob ×": st.column_config.NumberColumn(format="%.2f"),
-    "RE IRR ×": st.column_config.NumberColumn(format="%.2f"),
-    "RE Prob ×": st.column_config.NumberColumn(format="%.2f"),
+    "PE IRR ×": st.column_config.TextColumn("PE IRR ×"),
+    "PE Prob ×": st.column_config.TextColumn("PE Prob ×"),
+    "RE IRR ×": st.column_config.TextColumn("RE IRR ×"),
+    "RE Prob ×": st.column_config.TextColumn("RE Prob ×"),
 }
 for ac in IRR_BASED_ACS:
-    col_config[f"{ac} Override %"] = st.column_config.NumberColumn(format="%.1f%%")
+    col_config[f"{ac} Override %"] = st.column_config.TextColumn(f"{ac} Override %")
 
 irr_numeric_cols = ["PE IRR ×", "PE Prob ×", "RE IRR ×", "RE Prob ×"] + [f"{ac} Override %" for ac in IRR_BASED_ACS]
 irr_df = utils.inject_formulas_for_edit(irr_df, "fx_irr_overrides", irr_numeric_cols)
@@ -227,7 +230,7 @@ div_df = utils.inject_formulas_for_edit(div_df, "fx_dividends", div_numeric_cols
 st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable — enter your values below</p>', unsafe_allow_html=True)
 st.caption("💡 Supports math expressions (e.g. 500*2) and FX shortcuts (e.g. 1000/EURUSD)")
 edited_divs = st.data_editor(div_df, use_container_width=True, hide_index=True,
-    column_config={str(yr): st.column_config.NumberColumn(format="%.0f") for yr in div_years},
+    column_config={str(yr): st.column_config.TextColumn(str(yr)) for yr in div_years},
     disabled=["Asset Class"], key="div_history_editor")
 edited_divs = utils.process_math_in_df(edited_divs, div_numeric_cols, editor_key="fx_dividends")
 

@@ -10,7 +10,7 @@ st.title("💶 Cash & Savings")
 items = utils.load_json(utils.DATA_DIR / "cash.json", [])
 fx = utils.load_fx_rates()
 
-# --- Metrics ---
+# --- Metrics (always visible above tabs) ---
 total_eur = sum(utils.to_eur(i.get("amount", 0), i.get("currency", "EUR"), fx) for i in items)
 cash_items = [i for i in items if i.get("type") == "Cash"]
 equiv_items = [i for i in items if i.get("type") == "Cash Equivalent"]
@@ -27,40 +27,63 @@ c2.metric("Cash", utils.fmt_eur(total_cash))
 c3.metric("Cash Equivalents", utils.fmt_eur(total_equiv))
 c4.metric("Annual Interest", utils.fmt_eur(total_interest))
 
-st.divider()
+# --- Tabs ---
+tab1, tab2 = st.tabs(["Positions", "Edit"])
 
-# --- Editable Accounts ---
-st.subheader("Accounts")
-edit_rows = [{
-    "name": c.get("name", ""), "bank": c.get("bank", ""),
-    "currency": c.get("currency", "EUR"), "amount": c.get("amount", 0),
-    "interest_rate_pct": c.get("interest_rate_pct", 0), "type": c.get("type", "Cash"),
-} for c in items]
-
-edit_df = pd.DataFrame(edit_rows) if edit_rows else pd.DataFrame(
-    columns=["name", "bank", "currency", "amount", "interest_rate_pct", "type"])
-st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable — supports math (e.g. =500*2, 1000/EURUSD)</p>', unsafe_allow_html=True)
-edited = st.data_editor(edit_df, use_container_width=True, hide_index=True, num_rows="dynamic",
-    column_config={
-        "currency": st.column_config.SelectboxColumn("Currency", options=utils.CURRENCIES),
-        "type": st.column_config.SelectboxColumn("Type", options=["Cash", "Cash Equivalent"]),
-        "amount": st.column_config.NumberColumn(format="%.2f"),
-    })
-edited = utils.process_math_in_df(edited, ["amount", "interest_rate_pct"], editor_key="cash_savings_accounts")
-
-if st.button("💾 Save", type="primary", key="cash_save"):
-    new_items = []
-    for j, (_, row) in enumerate(edited.iterrows()):
-        if row.get("name"):
-            orig = items[j] if j < len(items) else {}
-            new_items.append({
-                "id": orig.get("id", utils.new_id()),
-                "name": row["name"], "bank": row.get("bank", ""),
-                "currency": row.get("currency", "EUR"),
-                "amount": float(row.get("amount", 0) or 0),
-                "interest_rate_pct": float(row.get("interest_rate_pct", 0) or 0),
-                "type": row.get("type", "Cash"),
+with tab1:
+    if not items:
+        st.info("No accounts yet. Add them in the Edit tab.")
+    else:
+        rows = []
+        for c in items:
+            amount_eur = utils.to_eur(c.get("amount", 0), c.get("currency", "EUR"), fx)
+            annual_int = amount_eur * c.get("interest_rate_pct", 0) / 100
+            rows.append({
+                "Name": c.get("name", ""),
+                "Bank": c.get("bank", ""),
+                "Currency": c.get("currency", "EUR"),
+                "Amount": c.get("amount", 0),
+                "Amount (EUR)": amount_eur,
+                "Interest Rate %": c.get("interest_rate_pct", 0),
+                "Annual Interest (EUR)": annual_int,
+                "Type": c.get("type", "Cash"),
             })
-    utils.save_json(utils.DATA_DIR / "cash.json", new_items)
-    st.success("Saved!")
-    st.rerun()
+        df = pd.DataFrame(rows)
+        utils.render_aggrid_table(df, key="aggrid_cash_positions", height=400)
+
+with tab2:
+    st.subheader("Edit Accounts")
+    edit_rows = [{
+        "name": c.get("name", ""), "bank": c.get("bank", ""),
+        "currency": c.get("currency", "EUR"), "amount": c.get("amount", 0),
+        "interest_rate_pct": c.get("interest_rate_pct", 0), "type": c.get("type", "Cash"),
+    } for c in items]
+
+    edit_df = pd.DataFrame(edit_rows) if edit_rows else pd.DataFrame(
+        columns=["name", "bank", "currency", "amount", "interest_rate_pct", "type"])
+    st.caption("💡 Supports math expressions (e.g. 500*2) and FX shortcuts (e.g. 1000/EURUSD)")
+    edit_df = utils.inject_formulas_for_edit(edit_df, "cash_savings_accounts", ["amount", "interest_rate_pct"])
+    edited = st.data_editor(edit_df, use_container_width=True, hide_index=True, num_rows="dynamic",
+        column_config={
+            "currency": st.column_config.SelectboxColumn("Currency", options=utils.CURRENCIES),
+            "type": st.column_config.SelectboxColumn("Type", options=["Cash", "Cash Equivalent"]),
+            "amount": st.column_config.TextColumn("amount"),
+        })
+    edited = utils.process_math_in_df(edited, ["amount", "interest_rate_pct"], editor_key="cash_savings_accounts")
+
+    if st.button("💾 Save", type="primary", key="cash_save"):
+        new_items = []
+        for j, (_, row) in enumerate(edited.iterrows()):
+            if row.get("name"):
+                orig = items[j] if j < len(items) else {}
+                new_items.append({
+                    "id": orig.get("id", utils.new_id()),
+                    "name": row["name"], "bank": row.get("bank", ""),
+                    "currency": row.get("currency", "EUR"),
+                    "amount": float(row.get("amount", 0) or 0),
+                    "interest_rate_pct": float(row.get("interest_rate_pct", 0) or 0),
+                    "type": row.get("type", "Cash"),
+                })
+        utils.save_json(utils.DATA_DIR / "cash.json", new_items)
+        st.success("Saved!")
+        st.rerun()

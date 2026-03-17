@@ -1,6 +1,7 @@
 .streamlit/secrets.toml
 .streamlit/google_credentials.json
 .streamlit/_pkce/
+.streamlit/_sessions/
 data/users/
 data/_backup_premigration/
 data/_template/
