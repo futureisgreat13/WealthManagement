@@ -460,6 +460,129 @@ def save_fx_rates(rates: dict) -> None:
     save_json(DATA_DIR / "fx_rates.json", rates)
 
 
+# ── Live Market Data (yfinance) ──────────────────────────────────────
+
+BENCHMARK_TICKERS = {
+    "S&P 500":       {"ticker": "^GSPC",     "currency": "USD"},
+    "Nasdaq":        {"ticker": "^IXIC",     "currency": "USD"},
+    "Gold":          {"ticker": "GC=F",      "currency": "USD"},
+    "MSCI World":    {"ticker": "URTH",      "currency": "USD"},
+    "Euro Stoxx 50": {"ticker": "^STOXX50E", "currency": "EUR"},
+}
+
+FX_TICKER_MAP = {
+    "EURUSD": "EURUSD=X",
+    "EURGBP": "EURGBP=X",
+    "EURINR": "EURINR=X",
+    "EURHKD": "EURHKD=X",
+    "EURJPY": "EURJPY=X",
+    "EURCAD": "EURCAD=X",
+    "EURAUD": "EURAUD=X",
+    "EURCHF": "EURCHF=X",
+}
+
+
+@st.cache_data(ttl=300)
+def fetch_live_fx_rates() -> dict:
+    """Fetch live EUR/X rates via yfinance. Returns dict like {"EURUSD": 1.08, ...}.
+    Returns empty dict on failure."""
+    try:
+        import yfinance as yf
+        tickers = list(FX_TICKER_MAP.values())
+        data = yf.download(tickers, period="1d", progress=False, threads=True)
+        rates = {}
+        for pair, ticker in FX_TICKER_MAP.items():
+            try:
+                if len(tickers) == 1:
+                    close = data["Close"].iloc[-1]
+                else:
+                    close = data["Close"][ticker].iloc[-1]
+                if close and close > 0:
+                    rates[pair] = round(float(close), 4)
+            except (KeyError, IndexError):
+                continue
+        return rates
+    except Exception:
+        return {}
+
+
+@st.cache_data(ttl=900)
+def fetch_benchmark_returns(ticker: str, currency: str = "USD") -> dict:
+    """Fetch YTD, 1Y, 3Y, 5Y total returns for a benchmark.
+    Returns dict like {"YTD": 12.5, "1Y": 18.2, "3Y": 45.0, "5Y": 80.1} (percentages).
+    Returns in EUR terms if the benchmark is USD-denominated."""
+    try:
+        import yfinance as yf
+        from datetime import datetime, timedelta
+
+        now = datetime.now()
+        start_5y = now - timedelta(days=5*365)
+
+        # Fetch benchmark data
+        bench = yf.download(ticker, start=start_5y.strftime("%Y-%m-%d"), progress=False)
+        if bench.empty:
+            return {}
+
+        bench_close = bench["Close"].squeeze() if hasattr(bench["Close"], 'squeeze') else bench["Close"]
+
+        # Define period start dates
+        ytd_start = datetime(now.year, 1, 1)
+        periods = {
+            "YTD": ytd_start,
+            "1Y": now - timedelta(days=365),
+            "3Y": now - timedelta(days=3*365),
+            "5Y": start_5y,
+        }
+
+        # Fetch EUR/USD for currency conversion if needed
+        fx_start = None
+        fx_data = None
+        if currency != "EUR":
+            fx_ticker = f"EUR{currency}=X"
+            fx_start = start_5y
+            fx_data = yf.download(fx_ticker, start=fx_start.strftime("%Y-%m-%d"), progress=False)
+            if not fx_data.empty:
+                fx_close = fx_data["Close"].squeeze() if hasattr(fx_data["Close"], 'squeeze') else fx_data["Close"]
+            else:
+                fx_close = None
+        else:
+            fx_close = None
+
+        results = {}
+        for label, start_date in periods.items():
+            try:
+                # Find closest available date
+                mask = bench_close.index >= start_date.strftime("%Y-%m-%d")
+                if not mask.any():
+                    continue
+                start_price = float(bench_close[mask].iloc[0])
+                end_price = float(bench_close.iloc[-1])
+
+                if start_price <= 0:
+                    continue
+
+                bench_return = (end_price / start_price) - 1  # as decimal
+
+                # Convert to EUR if needed
+                if fx_close is not None and currency != "EUR":
+                    fx_mask = fx_close.index >= start_date.strftime("%Y-%m-%d")
+                    if fx_mask.any():
+                        fx_start_rate = float(fx_close[fx_mask].iloc[0])
+                        fx_end_rate = float(fx_close.iloc[-1])
+                        if fx_start_rate > 0 and fx_end_rate > 0:
+                            # EUR return = (1 + USD_return) * (EUR/USD_start / EUR/USD_end) - 1
+                            # If EUR/USD goes from 1.10 to 1.05, EUR appreciated, USD return worth less in EUR
+                            bench_return = (1 + bench_return) * (fx_start_rate / fx_end_rate) - 1
+
+                results[label] = round(bench_return * 100, 1)
+            except (IndexError, KeyError, ZeroDivisionError):
+                continue
+
+        return results
+    except Exception:
+        return {}
+
+
 def to_eur(value: float, currency: str, fx_rates: dict) -> float:
     if currency == "EUR":
         return value

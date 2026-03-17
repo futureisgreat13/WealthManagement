@@ -269,6 +269,107 @@ with col_returns:
                                       tickfont=dict(size=9), title=None)))
         st.plotly_chart(fig4, use_container_width=True, config={"displayModeBar": False})
 
+# ── BENCHMARK COMPARISON ──
+st.divider()
+st.markdown("### Portfolio vs Benchmarks (EUR)")
+
+# Load saved benchmark selection
+overview_settings = utils.load_json(utils.DATA_DIR / "overview_settings.json", {})
+saved_benchmarks = overview_settings.get("benchmarks", ["S&P 500", "Gold"])
+available_benchmarks = list(utils.BENCHMARK_TICKERS.keys())
+
+selected_benchmarks = st.multiselect(
+    "Select benchmarks to compare",
+    available_benchmarks,
+    default=[b for b in saved_benchmarks if b in available_benchmarks],
+    key="benchmark_selector",
+)
+
+# Save selection
+if selected_benchmarks != saved_benchmarks:
+    overview_settings["benchmarks"] = selected_benchmarks
+    utils.save_json(utils.DATA_DIR / "overview_settings.json", overview_settings)
+
+if selected_benchmarks:
+    # Calculate portfolio returns for matching periods
+    valid_hist = {y: v for y, v in hist_net_worth.items() if v > 0}
+    hist_years_sorted = sorted(int(y) for y in valid_hist.keys())
+    hist_vals = {int(y): v for y, v in valid_hist.items()}
+
+    from datetime import datetime as _dt
+    now_yr = _dt.now().year
+    portfolio_returns = {}
+
+    # 1Y return (last year-end vs prior year-end)
+    if now_yr - 1 in hist_vals and now_yr - 2 in hist_vals and hist_vals[now_yr - 2] > 0:
+        cf_data = utils.load_json(utils.DATA_DIR / "cashflow.json", {})
+        income_data = cf_data.get("income", {})
+        emp_inc_1y = income_data.get("Salary", {}).get(str(now_yr - 1), 0) + \
+                     income_data.get("Optiver Bonus", {}).get(str(now_yr - 1), 0)
+        portfolio_returns["1Y"] = round(((hist_vals[now_yr - 1] - hist_vals[now_yr - 2] - emp_inc_1y) / hist_vals[now_yr - 2]) * 100, 1)
+
+    # 3Y return
+    if now_yr - 1 in hist_vals and now_yr - 4 in hist_vals and hist_vals[now_yr - 4] > 0:
+        portfolio_returns["3Y"] = round(((hist_vals[now_yr - 1] / hist_vals[now_yr - 4]) - 1) * 100, 1)
+
+    # 5Y return
+    if now_yr - 1 in hist_vals and now_yr - 6 in hist_vals and hist_vals[now_yr - 6] > 0:
+        portfolio_returns["5Y"] = round(((hist_vals[now_yr - 1] / hist_vals[now_yr - 6]) - 1) * 100, 1)
+
+    # Fetch benchmark returns
+    benchmark_data = {}
+    for bm_name in selected_benchmarks:
+        bm_info = utils.BENCHMARK_TICKERS[bm_name]
+        returns = utils.fetch_benchmark_returns(bm_info["ticker"], bm_info["currency"])
+        if returns:
+            benchmark_data[bm_name] = returns
+
+    # Build comparison chart
+    periods = ["1Y", "3Y", "5Y"]
+    available_periods = [p for p in periods if p in portfolio_returns or any(p in benchmark_data.get(bm, {}) for bm in selected_benchmarks)]
+
+    if available_periods and benchmark_data:
+        fig_bench = go.Figure()
+
+        # Portfolio bars
+        port_vals = [portfolio_returns.get(p, 0) for p in available_periods]
+        fig_bench.add_trace(go.Bar(
+            name="Portfolio",
+            x=available_periods,
+            y=port_vals,
+            marker_color=utils.C_GREEN,
+            text=[f"{v:+.1f}%" for v in port_vals],
+            textposition="outside",
+            textfont=dict(size=10),
+        ))
+
+        # Benchmark bars
+        bm_colors = ["#4285f4", "#fbbc04", "#ea4335", "#34a853", "#8b5cf6"]
+        for i, bm_name in enumerate(selected_benchmarks):
+            if bm_name in benchmark_data:
+                bm_vals = [benchmark_data[bm_name].get(p, 0) for p in available_periods]
+                fig_bench.add_trace(go.Bar(
+                    name=bm_name,
+                    x=available_periods,
+                    y=bm_vals,
+                    marker_color=bm_colors[i % len(bm_colors)],
+                    text=[f"{v:+.1f}%" for v in bm_vals],
+                    textposition="outside",
+                    textfont=dict(size=10),
+                ))
+
+        layout_kwargs = utils.bloomberg_chart_layout(
+            height=300,
+            showlegend=True,
+            yaxis=dict(gridcolor=utils.GRID_LINE, tickformat=".0f", title=None),
+        )
+        layout_kwargs["legend"] = dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        fig_bench.update_layout(**layout_kwargs, barmode="group")
+        st.plotly_chart(fig_bench, use_container_width=True, config={"displayModeBar": False})
+        st.caption("All benchmark returns converted to EUR for comparison. Portfolio returns exclude employment income.")
+    elif not benchmark_data:
+        st.info("⏳ Loading benchmark data... If this persists, check your internet connection.")
+
 # ── EXPANDERS (details) ──
 with st.expander("Projection Breakdown"):
     def _idx(yr):

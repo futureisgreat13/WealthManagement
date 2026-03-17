@@ -14,14 +14,42 @@ st.subheader("FX Rates (EUR/X)")
 fx = utils.load_fx_rates()
 pairs = ["EURUSD", "EURINR", "EURGBP", "EURHKD", "EURJPY", "EURCAD", "EURAUD", "EURCHF"]
 
+# Apply live rates to widget keys if just fetched
+if "_fx_live_rates" in st.session_state:
+    for pair in pairs:
+        if pair in st.session_state["_fx_live_rates"]:
+            st.session_state[f"fx_{pair}"] = float(st.session_state["_fx_live_rates"][pair])
+    del st.session_state["_fx_live_rates"]
+
+# Live FX fetch
+fcol1, fcol2 = st.columns([1, 3])
+with fcol1:
+    if st.button("🔄 Fetch Live Rates", type="secondary"):
+        live = utils.fetch_live_fx_rates()
+        if live:
+            st.session_state["_fx_live_rates"] = live
+            st.session_state["_fx_live_fetched"] = True
+            st.rerun()
+        else:
+            st.error("Failed to fetch live rates. Check internet connection.")
+with fcol2:
+    if st.session_state.get("_fx_live_fetched"):
+        st.success("✅ Live rates loaded — review & save below")
+        st.session_state["_fx_live_fetched"] = False
+
 cols = st.columns(4)
 new_fx = {}
 for i, pair in enumerate(pairs):
     with cols[i % 4]:
-        new_fx[pair] = st.number_input(pair, value=float(fx.get(pair, 1.0)), step=0.001, format="%.4f", key=f"fx_{pair}")
+        # Only pass value if widget key not already in session state (avoids Streamlit warning)
+        kwargs = {"label": pair, "step": 0.001, "format": "%.4f", "key": f"fx_{pair}"}
+        if f"fx_{pair}" not in st.session_state:
+            kwargs["value"] = float(fx.get(pair, 1.0))
+        new_fx[pair] = st.number_input(**kwargs)
 
 if st.button("💾 Save FX Rates", type="primary"):
     utils.save_fx_rates(new_fx)
+    st.session_state.pop("_fx_live_rates", None)
     st.success("FX rates saved!")
 
 st.divider()
