@@ -138,16 +138,21 @@ with tab2:
 
     # Build per-cell coloring: yellow=user input, blue=IBKR, default=formula
     col_source_map = {"Value (EUR)": {}, "New Capital": {}}
+    stored_formulas = utils.load_json(utils.DATA_DIR / "formulas.json", {})
     for i, yr in enumerate(all_years):
         # Value column
         if value_is_actual[i]:
             ibkr_val = utils.get_ibkr_new_capital("Equity", yr)
             col_source_map["Value (EUR)"][i] = "ibkr" if ibkr_val is not None else "input"
+        elif f"public_stocks_valuations::{i}::Value (EUR)" in stored_formulas:
+            col_source_map["Value (EUR)"][i] = "input"
         # New Capital column
         cap_src = get_capital_source(yr)
         if "IBKR" in cap_src:
             col_source_map["New Capital"][i] = "ibkr"
         elif "Manual" in cap_src or (yr < utils.CURRENT_YEAR and get_new_capital(yr) != 0):
+            col_source_map["New Capital"][i] = "input"
+        elif f"public_stocks_valuations::{i}::New Capital" in stored_formulas:
             col_source_map["New Capital"][i] = "input"
 
     bg_style_map, cell_style_map = utils.build_valuation_style_maps(col_source_map)

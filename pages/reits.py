@@ -105,11 +105,16 @@ with tab2:
 
     # Build per-cell coloring
     col_source_map = {"Value (EUR)": {}, "New Capital": {}}
+    stored_formulas = utils.load_json(utils.DATA_DIR / "formulas.json", {})
     for i, yr in enumerate(all_years):
         if value_is_actual[i]:
             col_source_map["Value (EUR)"][i] = "input"
+        elif f"reits_valuations::{i}::Value (EUR)" in stored_formulas:
+            col_source_map["Value (EUR)"][i] = "input"
         cap = get_new_capital(yr)
         if cap != 0 and yr < utils.CURRENT_YEAR:
+            col_source_map["New Capital"][i] = "input"
+        elif f"reits_valuations::{i}::New Capital" in stored_formulas:
             col_source_map["New Capital"][i] = "input"
 
     bg_style_map, cell_style_map = utils.build_valuation_style_maps(col_source_map)

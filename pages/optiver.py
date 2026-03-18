@@ -42,7 +42,6 @@ def shares_editor(tab_key: str, share_list: list, price_key: str, price_val: flo
 
     st.caption("💡 Supports math expressions (e.g. 500*2) and FX shortcuts (e.g. 1000/EURUSD)")
     editor_key = f"optiver_{tab_key}_shares"
-    display_df = utils.inject_formulas_for_edit(display_df, editor_key, ["shares_added", "invested_amount"])
     edited = st.data_editor(display_df, width="stretch", hide_index=True, num_rows="dynamic",
         column_config={
             "year": st.column_config.NumberColumn("Year", format="%d"),
@@ -63,7 +62,6 @@ with tab3:
     div_df = pd.DataFrame(divs if divs else [], columns=["id", "year", "div_per_share", "shares_eligible", "tax", "net_dividend"])
     display_div = div_df[["year", "div_per_share", "shares_eligible", "tax", "net_dividend"]].copy() if not div_df.empty else pd.DataFrame(columns=["year", "div_per_share", "shares_eligible", "tax", "net_dividend"])
     st.caption("💡 Supports math expressions (e.g. 500*2) and FX shortcuts (e.g. 1000/EURUSD)")
-    display_div = utils.inject_formulas_for_edit(display_div, "optiver_dividends", ["div_per_share", "shares_eligible", "tax", "net_dividend"])
     edited_divs = st.data_editor(display_div, width="stretch", hide_index=True, num_rows="dynamic",
         column_config={
             "year": st.column_config.NumberColumn("Year", format="%d"),
@@ -209,7 +207,6 @@ with tab4:
     override_df = pd.DataFrame(override_rows_data)
     st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable — enter your values below</p>', unsafe_allow_html=True)
     st.caption("💡 Supports math expressions (e.g. 500*2) and FX shortcuts (e.g. 1000/EURUSD)")
-    override_df = utils.inject_formulas_for_edit(override_df, "optiver_year_end_overrides", ["Free (EUR)", "Bound (EUR)"])
     edited_overrides = st.data_editor(override_df, use_container_width=True, hide_index=True,
         column_config={
             "Free (EUR)": st.column_config.NumberColumn(format="€%.0f"),

@@ -345,7 +345,6 @@ with st.expander("Edit Historical Asset Values"):
     col_config["PE (auto)"] = st.column_config.NumberColumn(format="€%.0f")
     col_config["RE (auto)"] = st.column_config.NumberColumn(format="€%.0f")
     col_config["Total"] = st.column_config.NumberColumn(format="€%.0f")
-    edit_df = utils.inject_formulas_for_edit(edit_df, "overview_targets", editable_acs)
     edited_hist = st.data_editor(
         edit_df, use_container_width=True, hide_index=True, num_rows="dynamic",
         column_config=col_config, disabled=["PE (auto)", "RE (auto)", "Total"])

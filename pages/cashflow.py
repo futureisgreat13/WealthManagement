@@ -228,7 +228,6 @@ with st.expander("Edit Manual Values", expanded=False):
     edit_row_mapping.append(("actual_cash", "actual_cash"))
 
     edit_df = pd.DataFrame(edit_rows)
-    edit_df = utils.inject_formulas_for_edit(edit_df, "cashflow_income", years)
     edited = st.data_editor(edit_df, use_container_width=True, hide_index=True,
         column_config={
             "Category": st.column_config.TextColumn(width="small"),

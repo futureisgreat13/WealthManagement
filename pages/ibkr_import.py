@@ -207,7 +207,6 @@ if existing_flows:
             edit_rows.append({"Asset Class": ac, "Year": yr, "Net Capital (EUR)": amt})
     if edit_rows:
         edit_df = pd.DataFrame(edit_rows)
-        edit_df = utils.inject_formulas_for_edit(edit_df, "ibkr_capital", ["Net Capital (EUR)"])
         edited = st.data_editor(edit_df, use_container_width=True, hide_index=True,
             num_rows="dynamic",
             column_config={
