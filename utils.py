@@ -1223,6 +1223,18 @@ def get_base_year() -> int | None:
     return max(past_years)
 
 
+YEAR_END_REASONS = {
+    "Year-end valuation (IBKR)": "Net worth & projections",
+    "Actual dividends received": "Cash flow & income tracking",
+    "Net capital invested/withdrawn (IBKR)": "Return calculations & cash flow",
+    "Year-end valuation": "Net worth & projections",
+    "Year-end NAV": "Net worth & projections",
+    "Annual income": "Cash flow & business valuation",
+    "Actual cash balance": "Cash flow reconciliation",
+    "Outstanding balance": "Net worth (reduces assets)",
+}
+
+
 def get_year_end_completeness(year: int = None) -> dict:
     """Return detailed completeness checklist for a year-end close.
 
@@ -1230,6 +1242,7 @@ def get_year_end_completeness(year: int = None) -> dict:
         {
             "year": int,
             "missing_items": [{"asset_class": str, "name": str, "field": str}, ...],
+            "complete_items": [{"asset_class": str, "name": str, "field": str}, ...],
             "complete_count": int,
             "total_count": int,
         }
@@ -1237,11 +1250,22 @@ def get_year_end_completeness(year: int = None) -> dict:
     if year is None:
         year = get_base_year()
     if year is None:
-        return {"year": None, "missing_items": [], "complete_count": 0, "total_count": 0}
+        return {"year": None, "missing_items": [], "complete_items": [],
+                "complete_count": 0, "total_count": 0}
 
     yr_str = str(year)
     missing: list[dict] = []
+    complete: list[dict] = []
     total = 0
+
+    def _check(ok: bool, asset_class: str, name: str, field: str):
+        nonlocal total
+        total += 1
+        entry = {"asset_class": asset_class, "name": name, "field": field}
+        if ok:
+            complete.append(entry)
+        else:
+            missing.append(entry)
 
     # ── Liquid assets (IBKR-driven) ──
     avh = load_json(DATA_DIR / "asset_value_history.json", {})
@@ -1253,75 +1277,80 @@ def get_year_end_completeness(year: int = None) -> dict:
     liquid_classes = {"Equity": ["Equity", "ETF"], "REITs": ["REITs"],
                       "Precious Metals": ["Precious Metals"], "Bonds": ["Bonds"]}
     for display_name, avh_keys in liquid_classes.items():
-        total += 1
         val = sum(avh.get(k, {}).get(yr_str, 0) for k in avh_keys)
-        if not val:
-            missing.append({"asset_class": display_name, "name": "Portfolio Value",
-                            "field": "Year-end valuation (IBKR)"})
+        _check(bool(val), display_name, "Portfolio Value", "Year-end valuation (IBKR)")
 
     # Dividends (Equity, REITs)
     for div_class in ["Equity", "REITs"]:
-        total += 1
-        if not actual_divs.get(div_class, {}).get(yr_str):
-            missing.append({"asset_class": div_class, "name": "Dividends",
-                            "field": "Actual dividends received"})
+        _check(bool(actual_divs.get(div_class, {}).get(yr_str)),
+               div_class, "Dividends", "Actual dividends received")
 
     # Net capital flows per IBKR class
     for flow_class in ["Equity", "REIT"]:
         display = "REITs" if flow_class == "REIT" else flow_class
-        total += 1
-        if not cap_flows.get(flow_class, {}).get(yr_str):
-            missing.append({"asset_class": display, "name": "Net Capital",
-                            "field": "Net capital invested/withdrawn (IBKR)"})
+        _check(bool(cap_flows.get(flow_class, {}).get(yr_str)),
+               display, "Net Capital", "Net capital invested/withdrawn (IBKR)")
 
     # ── Illiquid assets (per active item) ──
+    # year_key: field that indicates when the item was acquired/started
     illiquid_checks = [
-        ("private_equity.json", "Private Equity", "value_history", "Year-end valuation"),
-        ("real_estate.json", "Real Estate", "value_history", "Year-end valuation"),
-        ("funds.json", "Funds", "value_history", "Year-end NAV"),
-        ("business.json", "Business", "income_history", "Annual income"),
+        ("private_equity.json", "Private Equity", "value_history", "Year-end valuation", "year_invested"),
+        ("real_estate.json", "Real Estate", "value_history", "Year-end valuation", "year_invested"),
+        ("funds.json", "Funds", "value_history", "Year-end NAV", "year_invested"),
+        ("business.json", "Business", "income_history", "Annual income", "year_started"),
+        ("business.json", "Business", "value_history", "Year-end valuation", "year_started"),
     ]
-    for fname, ac, hist_key, field_label in illiquid_checks:
+    for fname, ac, hist_key, field_label, yr_key in illiquid_checks:
         items = load_json(DATA_DIR / fname, [])
         active = [i for i in items if i.get("status", "Active") == "Active"]
         for item in active:
-            total += 1
-            vh = item.get(hist_key, {})
-            if not vh.get(yr_str):
-                missing.append({"asset_class": ac, "name": item.get("name", "Unknown"),
-                                "field": field_label})
+            # Skip items not yet invested/started in the target year
+            item_start = item.get(yr_key, 0)
+            if item_start and item_start > year:
+                continue
+            # For business income, skip the start year itself (income from year+1)
+            if hist_key == "income_history" and item_start and year <= item_start:
+                continue
+            _check(bool(item.get(hist_key, {}).get(yr_str)),
+                   ac, item.get("name", "Unknown"), field_label)
 
     # ── Cash ──
     cf = load_json(DATA_DIR / "cashflow.json", {})
-    total += 1
-    if not cf.get("actual_cash_by_year", {}).get(yr_str):
-        missing.append({"asset_class": "Cash", "name": "Year-End Cash",
-                        "field": "Actual cash balance"})
+    _check(bool(cf.get("actual_cash_by_year", {}).get(yr_str)),
+           "Cash", "Year-End Cash", "Actual cash balance")
 
     # ── Debt (per item with any balance or recent activity) ──
     debt_items = load_json(DATA_DIR / "debt.json", [])
     active_debt = [d for d in debt_items
                    if d.get("outstanding_balance_eur", 0) > 0 or d.get("year_taken", 9999) >= year]
     for d in active_debt:
-        total += 1
-        vh = d.get("value_history", {})
-        if not vh.get(yr_str):
-            missing.append({"asset_class": "Debt", "name": d.get("name", "Unknown"),
-                            "field": "Outstanding balance"})
+        _check(bool(d.get("value_history", {}).get(yr_str)),
+               "Debt", d.get("name", "Unknown"), "Outstanding balance")
 
     # ── Cashflow manual items ──
     for expense_name in ["Wealth Tax", "Life Expenses"]:
-        total += 1
-        if not cf.get("expenses", {}).get(expense_name, {}).get(yr_str):
-            missing.append({"asset_class": "Cashflow", "name": expense_name,
-                            "field": f"{expense_name} for {year}"})
+        _check(bool(cf.get("expenses", {}).get(expense_name, {}).get(yr_str)),
+               "Cashflow", expense_name, f"{expense_name} for {year}")
 
     return {
         "year": year,
         "missing_items": missing,
+        "complete_items": complete,
         "complete_count": total - len(missing),
         "total_count": total,
     }
+
+
+def render_year_end_alert(asset_class: str, year: int = None):
+    """Show a warning banner if the given asset class has missing year-end data."""
+    import streamlit as st
+    if year is None:
+        year = CURRENT_YEAR - 1
+    comp = get_year_end_completeness(year)
+    ac_missing = [i for i in comp["missing_items"] if i["asset_class"] == asset_class]
+    if ac_missing:
+        details = ", ".join(f"{i['name']} ({i['field']})" for i in ac_missing)
+        st.warning(f"⚠️ {year} year-end data missing: {details}")
 
 
 def load_assumptions() -> dict:

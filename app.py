@@ -257,6 +257,7 @@ pages = {
         st.Page("pages/debt.py",           title="Debt",             icon="📉"),
     ],
     "Planning": [
+        st.Page("pages/year_end.py",         title="Year-End Checklist",     icon="✅"),
         st.Page("pages/investment_plan.py",  title="Investment Plan",         icon="📊"),
         st.Page("pages/ibkr_import.py",      title="IBKR Import",            icon="📥"),
         st.Page("pages/symbol_classifications.py", title="Symbol Classifications", icon="🏷️"),

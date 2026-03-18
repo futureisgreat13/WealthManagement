@@ -7,6 +7,7 @@ import utils
 
 st.title("🏭 Business")
 st.markdown('<style>div[data-testid="stMetric"]{padding:8px 0}div.stDataFrame,div[data-testid="stDataEditor"]{background:#111827;border:1px solid #1e3a5f;border-radius:8px;padding:4px}div[data-testid="stExpander"] summary{padding:4px 0}</style>', unsafe_allow_html=True)
+utils.render_year_end_alert("Business")
 
 items = utils.load_json(utils.DATA_DIR / "business.json", [])
 active_biz = [b for b in items if b.get("status") == "Active"]

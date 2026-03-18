@@ -41,22 +41,22 @@ k3.metric("CASH", utils.fmt_eur(cash_pos), f"{last_ye} YE")
 k4.metric("LIQUID", f"{liquid_pct:.0f}%", f"of portfolio")
 
 # ── YEAR-END STATUS ──
-_base_year = utils.get_base_year()
-if _base_year is not None:
-    _completeness = utils.get_year_end_completeness(_base_year)
-    _missing = _completeness["missing_items"]
-    _complete = _completeness["complete_count"]
-    _total = _completeness["total_count"]
+_ye_year = utils.CURRENT_YEAR - 1  # Most critical year to close
+_completeness = utils.get_year_end_completeness(_ye_year)
+_missing = _completeness["missing_items"]
+_complete = _completeness["complete_count"]
+_total = _completeness["total_count"]
 
+if _total > 0:
     _status_cols = st.columns([1, 3])
     with _status_cols[0]:
-        st.metric("BASE YEAR", str(_base_year), f"{_complete}/{_total} complete")
+        st.metric(f"YEAR-END {_ye_year}", f"{_complete}/{_total}", "complete")
     with _status_cols[1]:
         if not _missing:
-            st.success(f"✅ All asset classes have {_base_year} year-end data")
+            st.success(f"✅ All {_ye_year} year-end data complete")
         else:
-            with st.expander(f"⚠️ {len(_missing)} items missing {_base_year} year-end data", expanded=False):
-                # Group missing items by asset class
+            st.error(f"❌ {len(_missing)} items missing for {_ye_year} year-end close")
+            with st.expander(f"View missing items", expanded=False):
                 _grouped: dict[str, list] = {}
                 for item in _missing:
                     ac = item["asset_class"]

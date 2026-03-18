@@ -8,6 +8,8 @@ import utils
 
 utils.inject_bloomberg_css()
 st.title("Cash Flow")
+utils.render_year_end_alert("Cash")
+utils.render_year_end_alert("Cashflow")
 
 fx = utils.load_fx_rates()
 data = utils.load_json(utils.DATA_DIR / "cashflow.json", {})
