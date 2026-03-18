@@ -10,6 +10,7 @@ import utils
 
 utils.inject_bloomberg_css()
 st.title("Portfolio Overview")
+utils.show_unsaved_warning()
 
 # ── Scenario selector (inline, compact) ──
 cols = st.columns([4, 1])
@@ -280,6 +281,45 @@ with col_returns:
                                       tickfont=dict(size=9), title=None)))
         st.plotly_chart(fig4, use_container_width=True, config={"displayModeBar": False})
 
+# ── BENCHMARK COMPARISON ──
+with st.expander("📊 Benchmark Comparison", expanded=False):
+    st.caption("Compare your portfolio returns vs market benchmarks (EUR-adjusted)")
+    bench_options = list(utils.BENCHMARK_TICKERS.keys())
+    selected_benchmarks = st.multiselect("Benchmarks", bench_options,
+        default=["S&P 500", "Gold"], key="overview_benchmarks")
+
+    if selected_benchmarks and len(valid_hist) > 1:
+        periods = ["YTD", "1Y", "3Y", "5Y"]
+        # Portfolio returns
+        port_returns = {}
+        hist_sorted_yrs = sorted(int(y) for y in valid_hist.keys())
+        latest_val = valid_hist.get(str(hist_sorted_yrs[-1]), 0)
+        for period in periods:
+            if period == "YTD":
+                prev_val = valid_hist.get(str(utils.CURRENT_YEAR - 1), 0)
+            elif period == "1Y":
+                prev_val = valid_hist.get(str(utils.CURRENT_YEAR - 1), 0)
+            elif period == "3Y":
+                prev_val = valid_hist.get(str(utils.CURRENT_YEAR - 3), 0)
+            elif period == "5Y":
+                prev_val = valid_hist.get(str(utils.CURRENT_YEAR - 5), 0)
+            else:
+                prev_val = 0
+            port_returns[period] = ((latest_val / prev_val - 1) * 100) if prev_val > 0 else 0
+
+        bench_rows = [{"Name": "Portfolio", **{p: f"{port_returns[p]:+.1f}%" for p in periods}}]
+        for bench_name in selected_benchmarks:
+            info = utils.BENCHMARK_TICKERS[bench_name]
+            try:
+                br = utils.fetch_benchmark_returns(info["ticker"], info.get("currency", "USD"))
+                bench_rows.append({"Name": bench_name, **{p: f"{br.get(p, 0):+.1f}%" for p in periods}})
+            except Exception:
+                bench_rows.append({"Name": bench_name, **{p: "N/A" for p in periods}})
+
+        bench_df = pd.DataFrame(bench_rows)
+        # Color code: green if portfolio beats benchmark
+        st.dataframe(bench_df, use_container_width=True, hide_index=True)
+
 # ── EXPANDERS (details) ──
 with st.expander("Projection Breakdown"):
     def _idx(yr):
@@ -356,10 +396,12 @@ with st.expander("Edit Historical Asset Values"):
     col_config["PE (auto)"] = st.column_config.NumberColumn(format="€%.0f")
     col_config["RE (auto)"] = st.column_config.NumberColumn(format="€%.0f")
     col_config["Total"] = st.column_config.NumberColumn(format="€%.0f")
+    _orig_overview_hist = edit_df.copy()
     edited_hist = st.data_editor(
         edit_df, use_container_width=True, hide_index=True, num_rows="dynamic",
         column_config=col_config, disabled=["PE (auto)", "RE (auto)", "Total"])
     edited_hist = utils.process_math_in_df(edited_hist, editable_acs, editor_key="overview_targets")
+    utils.track_unsaved_changes("overview_hist", _orig_overview_hist, edited_hist)
     if st.button("Save Historical Values", type="primary"):
         new_asset_hist = {ac: {} for ac in editable_acs}
         for _, row in edited_hist.iterrows():
@@ -367,5 +409,6 @@ with st.expander("Edit Historical Asset Values"):
             for ac in editable_acs:
                 new_asset_hist[ac][yr_str] = float(row.get(ac, 0) or 0)
         utils.save_json(utils.DATA_DIR / "asset_history.json", new_asset_hist)
+        utils.clear_unsaved("overview_hist")
         st.success("Saved!")
         st.rerun()

@@ -8,6 +8,7 @@ import utils
 st.title("🥇 Precious Metals")
 st.markdown('<style>div[data-testid="stMetric"]{padding:8px 0}div.stDataFrame,div[data-testid="stDataEditor"]{background:#111827;border:1px solid #1e3a5f;border-radius:8px;padding:4px}div[data-testid="stExpander"] summary{padding:4px 0}</style>', unsafe_allow_html=True)
 utils.render_year_end_alert("Precious Metals")
+utils.show_unsaved_warning()
 
 positions = utils.load_json(utils.DATA_DIR / "public_stocks.json", [])
 metals = [p for p in positions if p.get("type") == "Precious Metals"]
@@ -118,6 +119,7 @@ with tab2:
     formula_map = utils.get_formula_map("precious_metals_valuations", len(proj_df), ["Value (EUR)", "New Capital"])
 
     st.caption("🟡 Yellow = user input. Default = formula. Double-click to edit. Supports math (e.g. =500*2).")
+    _orig_pm_pos = proj_df.copy()
     grid_result = utils.render_editable_aggrid_table(
         proj_df, key="metals_valuation_aggrid",
         editable_cols=["Value (EUR)", "New Capital"],
@@ -127,6 +129,7 @@ with tab2:
         height=min(500, max(200, len(rows) * 28 + 40)),
     )
     edited = grid_result.data
+    utils.track_unsaved_changes("pm_pos", _orig_pm_pos, edited)
     edited = utils.process_math_in_df(edited, ["Value (EUR)", "New Capital"], editor_key="precious_metals_valuations")
 
     if st.button("💾 Save Changes", type="primary", key="metals_val_save"):
@@ -158,6 +161,7 @@ with tab2:
         by_year["Precious Metals"] = ac_years
         plan["planned_investment_by_year"] = by_year
         utils.save_json(utils.DATA_DIR / "investment_plan.json", plan)
+        utils.clear_unsaved("pm_pos")
         st.success("Saved!")
         st.rerun()
 

@@ -8,377 +8,449 @@ import utils
 
 st.title("💰 Funds")
 st.markdown('<style>div[data-testid="stMetric"]{padding:8px 0}div.stDataFrame,div[data-testid="stDataEditor"]{background:#111827;border:1px solid #1e3a5f;border-radius:8px;padding:4px}div[data-testid="stExpander"] summary{padding:4px 0}</style>', unsafe_allow_html=True)
+utils.show_unsaved_warning()
 utils.render_year_end_alert("Funds")
 
 items = utils.load_json(utils.DATA_DIR / "funds.json", [])
 active = [i for i in items if i.get("status") == "Active"]
 
-total_committed = sum(i.get("committed_eur", 0) for i in items)
-total_called = sum(i.get("called_eur", 0) for i in items)
+# Compute year range
+earliest_yr = min((f.get("year_invested", utils.CURRENT_YEAR) for f in items), default=utils.CURRENT_YEAR) if items else utils.CURRENT_YEAR
+latest_yr_str = str(utils.CURRENT_YEAR - 1)
+all_years = list(range(earliest_yr, utils.CURRENT_YEAR + 6))
+all_yr_strs = [str(y) for y in all_years]
 
-# Year-end value: use value_history for latest completed year
-latest_yr = str(utils.CURRENT_YEAR - 1)
+# ── CASH FLOW OVERVIEW ──────────────────────────────────────────────────
+st.subheader("Cash Flow Overview")
+st.caption("Net capital calls (outflow) and distributions (inflow) per year across all funds")
+
+calls_by_year = {}
+dist_by_year = {}
+for f in items:
+    for cs in f.get("capital_call_schedule", []):
+        yr = cs.get("year")
+        if yr:
+            act = cs.get("actual_eur", 0)
+            if act is None or (isinstance(act, float) and (act != act)):  # NaN check
+                act = 0
+            calls_by_year[yr] = calls_by_year.get(yr, 0) + act
+    for yr_str, val in f.get("distribution_history", {}).items():
+        yr = int(yr_str)
+        dist_by_year[yr] = dist_by_year.get(yr, 0) + (val or 0)
+
+cf_years = sorted(set(list(calls_by_year.keys()) + list(dist_by_year.keys())))
+if cf_years:
+    fig_cf = go.Figure()
+    fig_cf.add_trace(go.Bar(
+        x=[str(y) for y in cf_years],
+        y=[-calls_by_year.get(y, 0) for y in cf_years],
+        name="Capital Calls (out)", marker_color="#ff4444",
+    ))
+    fig_cf.add_trace(go.Bar(
+        x=[str(y) for y in cf_years],
+        y=[dist_by_year.get(y, 0) for y in cf_years],
+        name="Distributions (in)", marker_color="#4CAF50",
+    ))
+    net_cf = [dist_by_year.get(y, 0) - calls_by_year.get(y, 0) for y in cf_years]
+    fig_cf.add_trace(go.Scatter(
+        x=[str(y) for y in cf_years], y=net_cf,
+        name="Net Cash Flow", mode="lines+markers",
+        line=dict(color="#ffa500", width=2), marker=dict(size=5),
+    ))
+    fig_cf.update_layout(**utils.bloomberg_chart_layout(title="", height=220, barmode="relative",
+                         xaxis=dict(title="Year"), yaxis=dict(title="EUR", tickformat=",.0f")))
+    st.plotly_chart(fig_cf, use_container_width=True, config={"displayModeBar": False})
+
+    # Summary metrics
+    total_calls = sum(calls_by_year.values())
+    total_dist = sum(dist_by_year.values())
+    mc1, mc2, mc3 = st.columns(3)
+    mc1.metric("Total Capital Calls", utils.fmt_eur(total_calls))
+    mc2.metric("Total Distributions", utils.fmt_eur(total_dist))
+    mc3.metric("Net Cash Flow", utils.fmt_eur(total_dist - total_calls))
+else:
+    st.info("No capital call or distribution data yet.")
+
+# KPI bar
+import math
+def _safe(v):
+    """Convert NaN/None/non-numeric to 0."""
+    if v is None:
+        return 0
+    try:
+        v = float(v)
+        if math.isnan(v) or math.isinf(v):
+            return 0
+        return v
+    except (ValueError, TypeError):
+        return 0
+
+total_committed = sum(_safe(i.get("committed_eur", 0)) for i in items)
+total_called = sum(_safe(i.get("called_eur", 0)) for i in items)
 total_nav = 0
 for f in active:
     vh = f.get("value_history", {})
-    val = vh.get(latest_yr, 0)
+    val = vh.get(latest_yr_str, 0)
     if val <= 0:
         val = f.get("current_nav_eur", 0)
     total_nav += val
-year_label = f" ({latest_yr} YE)"
 
 c1, c2, c3 = st.columns(3)
-c1.metric(f"Current NAV{year_label}", utils.fmt_eur(total_nav))
+c1.metric(f"Current NAV ({latest_yr_str} YE)", utils.fmt_eur(total_nav))
 c2.metric("Total Committed", utils.fmt_eur(total_committed))
 c3.metric("Total Called", utils.fmt_eur(total_called))
 
 st.divider()
 
-tab1, tab2, tab3, tab4 = st.tabs(["Positions", "Capital Calls", "Future Valuations", "Edit"])
+# ── POSITIONS (editable) ────────────────────────────────────────────────
+st.subheader("Positions")
 
-with tab1:
-    if active:
-        st.subheader(f"Active Funds ({len(active)})")
-        rows = []
-        for f in active:
-            committed = f.get("committed_eur", 0)
-            called = f.get("called_eur", 0)
-            nav = f.get("current_nav_eur", 0)
-            rows.append({
-                "Name": f.get("name", ""),
-                "Year": f.get("year_invested", ""),
-                "Exit": str(f.get("expected_exit_year") or "Open"),
-                "Committed": utils.fmt_eur_short(committed),
-                "Called": utils.fmt_eur_short(called),
-                "NAV": utils.fmt_eur_short(nav),
-                "Called %": f"{called/committed*100:.0f}%" if committed > 0 else "0%",
-                "IRR %": f"{f.get('expected_irr_pct', 0):.0f}%",
-                "Access": f.get("access_layer", ""),
+edit_rows = [{
+    "name": f.get("name", ""),
+    "year_invested": f.get("year_invested", 2024),
+    "expected_exit_year": f.get("expected_exit_year") or 0,
+    "committed_eur": _safe(f.get("committed_eur", 0)),
+    "called_eur": _safe(f.get("called_eur", 0)),
+    f"NAV ({latest_yr_str})": _safe(f.get("value_history", {}).get(latest_yr_str, f.get("current_nav_eur", 0))),
+    "expected_irr_pct": _safe(f.get("expected_irr_pct", 0)),
+    "access_layer": f.get("access_layer", "Direct"),
+    "status": f.get("status", "Active"),
+} for f in items]
+
+pos_df = pd.DataFrame(edit_rows) if edit_rows else pd.DataFrame(
+    columns=["name", "year_invested", "expected_exit_year", "committed_eur",
+             "called_eur", f"NAV ({latest_yr_str})", "expected_irr_pct", "access_layer", "status"])
+
+pos_numeric = ["committed_eur", "called_eur", f"NAV ({latest_yr_str})", "expected_irr_pct"]
+# Cast integer columns to str for TextColumn compatibility
+if "expected_exit_year" in pos_df.columns:
+    pos_df["expected_exit_year"] = pos_df["expected_exit_year"].astype(str)
+if "year_invested" in pos_df.columns:
+    pos_df["year_invested"] = pos_df["year_invested"].astype(str)
+st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable — add/remove funds, edit values</p>', unsafe_allow_html=True)
+pos_df_orig = pos_df.copy()
+pos_df = utils.inject_formulas_for_edit(pos_df, "funds_positions", pos_numeric)
+edited_pos = st.data_editor(pos_df, use_container_width=True, hide_index=True, num_rows="dynamic",
+    column_config={
+        "access_layer": st.column_config.SelectboxColumn("Access", options=["Direct", "LA", "ECI"]),
+        "status": st.column_config.SelectboxColumn("Status", options=["Active", "Closed"]),
+        **{c: st.column_config.TextColumn(c) for c in pos_numeric},
+        "expected_exit_year": st.column_config.TextColumn("Exit Year"),
+        "year_invested": st.column_config.TextColumn("Year Invested"),
+    }, key="fund_positions_editor")
+edited_pos = utils.process_math_in_df(edited_pos, pos_numeric, editor_key="funds_positions")
+utils.track_unsaved_changes("fund_pos", pos_df_orig, edited_pos)
+
+if st.button("💾 Save Positions", type="primary", key="fund_save_pos"):
+    deleted = utils.check_deleted_items(items, edited_pos, name_col="name")
+    if not deleted:
+        st.session_state["_pending_save_fund_pos"] = True
+    else:
+        st.session_state["_delete_confirm_fund_pos"] = deleted
+    st.rerun()
+
+save_result = utils.handle_save_with_delete_confirmation("fund_pos", [])
+if save_result == "save":
+    new_items = []
+    for j, (_, row) in enumerate(edited_pos.iterrows()):
+        if row.get("name"):
+            orig = items[j] if j < len(items) else {}
+            exit_yr = int(row.get("expected_exit_year", 0) or 0)
+            new_items.append({
+                "id": orig.get("id", utils.new_id()),
+                "name": row["name"],
+                "year_invested": int(row.get("year_invested", 2024) or 2024),
+                "expected_exit_year": exit_yr if exit_yr > 2000 else None,
+                "committed_eur": float(row.get("committed_eur", 0) or 0),
+                "called_eur": float(row.get("called_eur", 0) or 0),
+                "current_nav_eur": float(row.get(f"NAV ({latest_yr_str})", 0) or 0),
+                "expected_irr_pct": float(row.get("expected_irr_pct", 0) or 0),
+                "access_layer": row.get("access_layer", "Direct"),
+                "status": row.get("status", "Active"),
+                "notes": orig.get("notes", ""),
+                "capital_call_schedule": orig.get("capital_call_schedule", []),
+                "value_history": orig.get("value_history", {}),
+                "distribution_history": orig.get("distribution_history", {}),
             })
-        df_active = pd.DataFrame(rows)
-        row_height = min(400, max(200, len(rows) * 32 + 40))
-        utils.render_aggrid_table(df_active, key="aggrid_funds_active", height=row_height)
+    utils.save_json(utils.DATA_DIR / "funds.json", new_items)
+    utils.clear_unsaved("fund_pos")
+    st.success("Positions saved!")
+    st.rerun()
+elif save_result == "cancelled":
+    st.rerun()
 
-    closed = [i for i in items if i.get("status") == "Closed"]
-    if closed:
-        st.subheader(f"Closed ({len(closed)})")
-        c_rows = []
-        for f in closed:
-            c_rows.append({
-                "Name": f.get("name", ""),
-                "Year In": f.get("year_invested", ""),
-                "Committed": utils.fmt_eur_short(f.get("committed_eur", 0)),
-                "Called": utils.fmt_eur_short(f.get("called_eur", 0)),
-                "Final NAV": utils.fmt_eur_short(f.get("current_nav_eur", 0)),
-            })
-        utils.render_aggrid_table(pd.DataFrame(c_rows), key="aggrid_funds_closed", height=300)
+st.divider()
 
-with tab2:
-    st.subheader("Capital Call Schedules")
-    st.caption("Edit planned call % per year. Color: 🟢 95-100% total, 🔴 >100%, 🟡 <95%")
+# ── CAPITAL CALLS — Planned % Grid ──────────────────────────────────────
+st.subheader("Capital Calls — Planned % of Committed")
+st.caption("Enter expected capital call as % of committed capital per year. Last column shows total called / committed.")
 
-    for f in items:
-        committed = f.get("committed_eur", 0)
-        schedule = f.get("capital_call_schedule", [])
-        if not schedule and not committed:
+cc_years = list(range(earliest_yr, utils.CURRENT_YEAR + 6))
+cc_yr_strs = [str(y) for y in cc_years]
+
+pct_rows = []
+pct_source_map = {yr: {} for yr in cc_yr_strs}
+for idx, f in enumerate(items):
+    committed = f.get("committed_eur", 0)
+    yr_inv = f.get("year_invested", 2020)
+    schedule_map = {cs["year"]: cs for cs in f.get("capital_call_schedule", [])}
+    row = {"Fund": f.get("name", ""), "Committed": committed}
+    total_pct = 0
+    for yr_str in cc_yr_strs:
+        yr = int(yr_str)
+        if yr < yr_inv:
+            row[yr_str] = None
+        else:
+            cs = schedule_map.get(yr, {})
+            pct = cs.get("planned_pct", 0) or 0
+            row[yr_str] = pct
+            total_pct += pct
+            if pct > 0:
+                pct_source_map[yr_str][idx] = "input"
+    row["Total %"] = total_pct
+    pct_rows.append(row)
+
+pct_df = pd.DataFrame(pct_rows)
+pct_bg, pct_cell = utils.build_valuation_style_maps(pct_source_map)
+
+pct_result = utils.render_editable_aggrid_table(
+    pct_df, key="aggrid_fund_cc_pct", height=min(400, 80 + 35 * len(pct_rows)),
+    editable_cols=cc_yr_strs, numeric_cols=cc_yr_strs + ["Committed", "Total %"],
+    bg_style_map=pct_bg, cell_style_map=pct_cell,
+    editor_key="fund_cc_pct",
+)
+
+st.divider()
+
+# ── CAPITAL CALLS — Actual EUR Grid ─────────────────────────────────────
+st.subheader("Capital Calls — Actual EUR")
+st.caption("Enter actual capital called (EUR) per year-end. Yellow = user-entered.")
+
+act_rows = []
+act_source_map = {yr: {} for yr in cc_yr_strs}
+for idx, f in enumerate(items):
+    yr_inv = f.get("year_invested", 2020)
+    schedule_map = {cs["year"]: cs for cs in f.get("capital_call_schedule", [])}
+    row = {"Fund": f.get("name", ""), "Committed": f.get("committed_eur", 0)}
+    for yr_str in cc_yr_strs:
+        yr = int(yr_str)
+        if yr < yr_inv:
+            row[yr_str] = None
+        else:
+            cs = schedule_map.get(yr, {})
+            actual = cs.get("actual_eur", 0) or 0
+            row[yr_str] = actual
+            if actual > 0:
+                act_source_map[yr_str][idx] = "input"
+    row["Total Called"] = sum(row.get(yr, 0) or 0 for yr in cc_yr_strs)
+    act_rows.append(row)
+
+act_df = pd.DataFrame(act_rows)
+act_bg, act_cell = utils.build_valuation_style_maps(act_source_map)
+
+act_result = utils.render_editable_aggrid_table(
+    act_df, key="aggrid_fund_cc_actual", height=min(400, 80 + 35 * len(act_rows)),
+    editable_cols=cc_yr_strs, numeric_cols=cc_yr_strs + ["Committed", "Total Called"],
+    bg_style_map=act_bg, cell_style_map=act_cell,
+    editor_key="fund_cc_actual",
+)
+
+if st.button("💾 Save Capital Calls", type="primary", key="fund_save_cc"):
+    all_funds = utils.load_json(utils.DATA_DIR / "funds.json", [])
+    edited_pct = pct_result.data if hasattr(pct_result, 'data') else pct_result
+    edited_act = act_result.data if hasattr(act_result, 'data') else act_result
+    for idx, f_name in enumerate([f.get("name") for f in items]):
+        for fund in all_funds:
+            if fund.get("name") == f_name:
+                new_sched = []
+                for yr_str in cc_yr_strs:
+                    yr = int(yr_str)
+                    try:
+                        pct_val = float(edited_pct.iloc[idx].get(yr_str, 0) or 0)
+                    except (ValueError, TypeError, IndexError):
+                        pct_val = 0
+                    try:
+                        act_val = float(edited_act.iloc[idx].get(yr_str, 0) or 0)
+                    except (ValueError, TypeError, IndexError):
+                        act_val = 0
+                    if pct_val > 0 or act_val > 0:
+                        new_sched.append({"year": yr, "planned_pct": pct_val, "actual_eur": act_val})
+                fund["capital_call_schedule"] = new_sched
+                fund["called_eur"] = sum(s["actual_eur"] for s in new_sched if s["year"] <= utils.CURRENT_YEAR)
+                break
+    utils.save_json(utils.DATA_DIR / "funds.json", all_funds)
+    st.success("Capital calls saved!")
+    st.rerun()
+
+st.divider()
+
+# ── VALUATIONS ──────────────────────────────────────────────────────────
+st.subheader("Valuations")
+st.caption("🟡 Yellow = user-entered NAV. White = formula: V(N-1) × (1+IRR) + Capital Call(N). "
+           "User-entered values apply across all scenarios.")
+
+scenario = st.selectbox("Scenario", utils.SCENARIOS, index=2, key="fund_proj_scenario")
+proj_years = 10
+val_start = earliest_yr
+val_end = utils.CURRENT_YEAR + proj_years
+val_years = list(range(val_start, val_end + 1))
+val_yr_strs = [str(y) for y in val_years]
+
+mult = utils.get_scenario_multipliers("pe", scenario)
+irr_mult = mult["irr"]
+
+val_rows = []
+val_source_map = {yr: {} for yr in val_yr_strs}
+
+for idx, f in enumerate(active):
+    irr = f.get("expected_irr_pct", 0) * irr_mult / 100
+    yr_inv = f.get("year_invested", 2020)
+    vh = f.get("value_history", {})
+    schedule = {cs["year"]: cs.get("actual_eur", 0) for cs in f.get("capital_call_schedule", [])}
+
+    row = {"Fund": f.get("name", ""), "IRR": f"{f.get('expected_irr_pct', 0) * irr_mult:.0f}%",
+           "Exit": str(f.get("expected_exit_year") or "Open")}
+
+    prev_val = _safe(f.get("current_nav_eur", 0))
+    for yr in val_years:
+        yr_str = str(yr)
+        if yr < yr_inv:
+            row[yr_str] = 0
             continue
 
-        with st.expander(f"📊 {f.get('name', '')} — Committed: {utils.fmt_eur_short(committed)}"):
-            sched_rows = []
-            for cs in schedule:
-                yr = cs.get("year", 0)
-                pct = cs.get("planned_pct", 0)
-                actual = cs.get("actual_eur", 0)
-                # Only show planned % for future years (past years use actual EUR)
-                show_pct = pct if yr > utils.CURRENT_YEAR else 0
-                sched_rows.append({
-                    "Year": yr,
-                    "Planned %": show_pct,
-                    "Planned EUR": utils.fmt_eur_short(committed * show_pct / 100) if committed > 0 and show_pct > 0 else "",
-                    "Actual EUR": actual,
-                })
+        override = vh.get(yr_str)
+        has_override = override is not None and override > 0
 
-            if sched_rows:
-                total_pct = sum(cs.get("planned_pct", 0) for cs in schedule)
-                total_actual = sum(cs.get("actual_eur", 0) for cs in schedule)
-
-                # Color indicator
-                if total_pct > 100:
-                    st.error(f"⚠️ Total planned: {total_pct:.1f}% (over 100%)")
-                elif total_pct < 95:
-                    st.warning(f"📉 Total planned: {total_pct:.1f}% (under 95%)")
-                else:
-                    st.success(f"✅ Total planned: {total_pct:.1f}%")
-
-                sched_df = pd.DataFrame(sched_rows)
-                st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable — enter your values below</p>', unsafe_allow_html=True)
-                st.caption("💡 Supports math expressions (e.g. 500*2) and FX shortcuts (e.g. 1000/EURUSD)")
-                sched_df = utils.inject_formulas_for_edit(sched_df, f"funds_calls_{f.get('id', '')}", ["Planned %", "Actual EUR"])
-                edited_sched = st.data_editor(sched_df, use_container_width=True, hide_index=True,
-                    num_rows="dynamic", key=f"calls_{f.get('id', '')}",
-                    column_config={
-                        "Year": st.column_config.TextColumn("Year"),
-                        "Planned %": st.column_config.TextColumn("Planned %"),
-                        "Actual EUR": st.column_config.TextColumn("Actual EUR"),
-                        "Planned EUR": st.column_config.TextColumn(disabled=True),
-                    })
-                edited_sched = utils.process_math_in_df(edited_sched, ["Planned %", "Actual EUR"], editor_key=f"funds_calls_{f.get('id', '')}")
-
-                if st.button(f"Save {f.get('name', '')}", key=f"save_calls_{f.get('id', '')}"):
-                    new_sched = []
-                    for _, row in edited_sched.iterrows():
-                        if pd.notna(row.get("Year")):
-                            new_sched.append({
-                                "year": int(row["Year"]),
-                                "planned_pct": float(row.get("Planned %", 0) or 0),
-                                "actual_eur": float(row.get("Actual EUR", 0) or 0),
-                            })
-                    all_funds = utils.load_json(utils.DATA_DIR / "funds.json", [])
-                    for uf in all_funds:
-                        if uf.get("id") == f.get("id"):
-                            uf["capital_call_schedule"] = new_sched
-                            # Update called_eur from actuals up to current year
-                            uf["called_eur"] = sum(
-                                s["actual_eur"] for s in new_sched
-                                if s["year"] <= utils.CURRENT_YEAR
-                            )
-                    utils.save_json(utils.DATA_DIR / "funds.json", all_funds)
-                    st.success("Schedule saved!")
-                    st.rerun()
-
-    # Aggregated cashflow chart
-    st.subheader("Aggregated Fund Cash Flows")
-    agg = {}
-    for f in items:
-        for cs in f.get("capital_call_schedule", []):
-            yr = cs.get("year")
-            if yr:
-                agg.setdefault(yr, 0)
-                agg[yr] += cs.get("actual_eur", 0)
-    if agg:
-        years_sorted = sorted(agg.keys())
-        fig = go.Figure()
-        fig.add_trace(go.Bar(
-            x=[str(y) for y in years_sorted],
-            y=[-agg[y] for y in years_sorted],
-            name="Capital Calls",
-            marker_color="#ff4444",
-            text=[utils.fmt_eur(agg[y]) for y in years_sorted],
-            textposition="auto",
-        ))
-        fig.update_layout(template="plotly_dark", paper_bgcolor="#0e1117", plot_bgcolor="#1a1f2e",
-                          xaxis_title="Year", yaxis_title="EUR", title="Capital Calls by Year")
-        st.plotly_chart(fig, use_container_width=True)
-
-with tab3:
-    st.subheader("Future Valuations (IRR Growth)")
-    st.caption("🟡 Actual = user-entered NAV. ⚪ Formula = V(N-1) × (1 + IRR) + new_call(N). "
-               "All year cells are editable — edit to set actual values, set to 0 to clear.")
-
-    scenario = st.selectbox("Scenario", utils.SCENARIOS, index=2, key="fund_proj_scenario")
-    proj_years = 10
-    base_year = utils.get_base_year() or (utils.CURRENT_YEAR - 2)
-    years_list = list(range(base_year, base_year + proj_years + 1))
-
-    mult = utils.get_scenario_multipliers("pe", scenario)
-    irr_mult = mult["irr"]
-
-    proj_rows = []
-    totals_by_year = [0.0] * (proj_years + 1)
-
-    for row_idx, f in enumerate(active):
-        irr = f.get("expected_irr_pct", 0) * irr_mult / 100
-        year_invested = f.get("year_invested", 2020)
-        committed = f.get("committed_eur", 0)
-        vh = f.get("value_history", {})
-        schedule = {cs["year"]: cs.get("actual_eur", 0) for cs in f.get("capital_call_schedule", [])}
-
-        row = {
-            "Name": f.get("name", ""),
-            "IRR": f"{f.get('expected_irr_pct', 0) * irr_mult:.0f}%",
-            "Exit": str(f.get("expected_exit_year") or "Open"),
-        }
-
-        prev_val = f.get("current_nav_eur", 0)
-        for i, yr in enumerate(years_list):
-            if yr < year_invested:
-                row[str(yr)] = 0
-                continue
-
-            override = vh.get(str(yr))
-            has_override = override is not None and override > 0
-
-            if i == 0 or yr == year_invested:
-                if has_override:
-                    val = override
-                else:
-                    val = vh.get(str(yr), prev_val) or prev_val
-            else:
-                if has_override:
-                    val = override
-                else:
-                    new_call = schedule.get(yr, 0)
-                    val = prev_val * (1 + irr) + new_call
-
-            exit_yr = f.get("expected_exit_year")
-            if exit_yr and yr > exit_yr:
-                val = 0
-
-            prev_val = val
-            row[str(yr)] = round(val)
-            totals_by_year[i] += val
-
-        proj_rows.append(row)
-
-    # Total row
-    funds_totals = utils.compute_funds_timeline(years_list, scenario)
-    total_row = {"Name": "TOTAL", "IRR": "", "Exit": ""}
-    for i, yr in enumerate(years_list):
-        total_row[str(yr)] = round(funds_totals[i])
-    proj_rows.append(total_row)
-
-    proj_df = pd.DataFrame(proj_rows)
-    orig_df = proj_df.copy()
-    year_strs = [str(yr) for yr in years_list]
-    row_height = min(500, max(250, len(proj_rows) * 32 + 40))
-
-    st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable — edit year cells to set actual NAV values. Set to 0 to clear. Math expressions supported.</p>', unsafe_allow_html=True)
-
-    col_config = {"Name": st.column_config.TextColumn("Name")}
-    for yr_str in year_strs:
-        col_config[yr_str] = st.column_config.TextColumn(yr_str)
-
-    proj_df = utils.inject_formulas_for_edit(proj_df, "funds_valuations", year_strs)
-    edited_proj = st.data_editor(proj_df, use_container_width=True, hide_index=True,
-        height=row_height, column_config=col_config,
-        disabled=["Name", "IRR", "Exit"], key="fund_valuation_editor")
-    edited_proj = utils.process_math_in_df(edited_proj, year_strs, editor_key="funds_valuations")
-
-    if st.button("💾 Save Valuations", type="primary", key="fund_save_valuations"):
-        all_funds = utils.load_json(utils.DATA_DIR / "funds.json", [])
-        for row_idx, f in enumerate(active):
-            name = f.get("name", "")
-            for fund in all_funds:
-                if fund.get("name") == name:
-                    vh = fund.get("value_history", {})
-                    for yr_str in year_strs:
-                        new_val = float(edited_proj.iloc[row_idx].get(yr_str, 0) or 0)
-                        orig_val = float(orig_df.iloc[row_idx].get(yr_str, 0) or 0)
-                        if abs(new_val - orig_val) > 0.5:
-                            if new_val > 0:
-                                vh[yr_str] = new_val
-                            else:
-                                vh.pop(yr_str, None)
-                    fund["value_history"] = vh
-                    for yr in reversed(years_list):
-                        if vh.get(str(yr), 0) > 0:
-                            fund["current_nav_eur"] = vh[str(yr)]
-                            break
-                    break
-        utils.save_json(utils.DATA_DIR / "funds.json", all_funds)
-        st.success("Valuations saved!")
-        st.rerun()
-
-    # Data source info
-    with st.expander("ℹ️ Data Sources"):
-        st.markdown("""
-**Year-end NAV**
-- 🟡 **Actual**: User-entered values stored as anchors
-- ⚪ **Formula**: `V(N) = V(N-1) × (1 + IRR%) + Capital Call(N)`
-- Edit any year cell to set an actual value. Set to 0 to remove.
-
-**IRR & Scenario**
-- Per-fund IRR from 💰 Funds > Positions tab
-- Scenario multiplier from ⚙️ FX & Settings > IRR-Based Asset Scenarios
-- Current scenario: **{}** (IRR ×{:.2f})
-
-**Actuals in this table:**
-""".format(scenario, irr_mult))
-        actual_summary = []
-        for f in active:
-            vh = f.get("value_history", {})
-            actual_yrs = [yr for yr in sorted(vh.keys()) if vh[yr] > 0]
-            if actual_yrs:
-                actual_summary.append(f"- **{f.get('name', '')}**: {', '.join(actual_yrs)}")
-        if actual_summary:
-            st.markdown("\n".join(actual_summary))
+        if yr == yr_inv:
+            val = override if has_override else (vh.get(yr_str, prev_val) or prev_val)
+        elif has_override:
+            val = override
+            val_source_map[yr_str][idx] = "input"
         else:
-            st.markdown("_No actual values entered yet._")
+            new_call = _safe(schedule.get(yr, 0))
+            val = prev_val * (1 + irr) + new_call
 
-    # Chart
-    fig_proj = go.Figure()
-    fig_proj.add_trace(go.Scatter(
-        x=years_list, y=funds_totals,
-        mode="lines+markers", line=dict(color="#4c8bf5", width=3),
-        name="Total Funds (projected)",
-        text=[utils.fmt_eur(v) for v in funds_totals],
-        hovertemplate="%{x}: %{text}",
-    ))
-    fig_proj.update_layout(
-        template="plotly_dark", paper_bgcolor="#0e1117", plot_bgcolor="#1a1f2e",
-        xaxis_title="Year", yaxis_title="Value (EUR)",
-        yaxis=dict(tickformat=",.0f"), title=f"Fund Projections ({scenario})",
-    )
-    st.plotly_chart(fig_proj, use_container_width=True)
+        exit_yr = f.get("expected_exit_year")
+        if exit_yr and yr > exit_yr:
+            val = 0
 
-with tab4:
-    st.subheader("Edit Funds")
-    edit_rows = [{
-        "name": f.get("name", ""),
-        "year_invested": f.get("year_invested", 2024),
-        "expected_exit_year": f.get("expected_exit_year") or 0,
-        "committed_eur": f.get("committed_eur", 0),
-        "called_eur": f.get("called_eur", 0),
-        "current_nav_eur": f.get("current_nav_eur", 0),
-        "expected_irr_pct": f.get("expected_irr_pct", 0),
-        "access_layer": f.get("access_layer", "Direct"),
-        "status": f.get("status", "Active"),
-        "notes": f.get("notes", ""),
-    } for f in items]
+        val = _safe(val)
+        prev_val = val
+        row[yr_str] = round(val)
 
-    edit_df = pd.DataFrame(edit_rows) if edit_rows else pd.DataFrame(
-        columns=["name", "year_invested", "expected_exit_year", "committed_eur",
-                 "called_eur", "current_nav_eur", "expected_irr_pct",
-                 "access_layer", "status", "notes"])
+        # Mark overrides as input for yellow coloring
+        if has_override:
+            val_source_map[yr_str][idx] = "input"
 
-    row_height = min(400, max(200, len(edit_rows) * 32 + 40))
-    st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable — enter your values below</p>', unsafe_allow_html=True)
-    st.caption("💡 Supports math expressions (e.g. 500*2) and FX shortcuts (e.g. 1000/EURUSD)")
-    edit_df = utils.inject_formulas_for_edit(edit_df, "funds_holdings", ["committed_eur", "called_eur", "current_nav_eur", "expected_irr_pct"])
-    edited = st.data_editor(edit_df, use_container_width=True, hide_index=True, num_rows="dynamic",
-        height=row_height,
-        column_config={
-            "access_layer": st.column_config.SelectboxColumn("Access", options=["Direct", "LA", "ECI"]),
-            "status": st.column_config.SelectboxColumn("Status", options=["Active", "Closed"]),
-            "committed_eur": st.column_config.TextColumn("Committed"),
-            "called_eur": st.column_config.TextColumn("Called"),
-            "current_nav_eur": st.column_config.TextColumn("NAV"),
-            "expected_irr_pct": st.column_config.TextColumn("IRR %"),
-            "expected_exit_year": st.column_config.TextColumn("Exit Year"),
-        })
-    edited = utils.process_math_in_df(edited, ["committed_eur", "called_eur", "current_nav_eur", "expected_irr_pct"], editor_key="funds_holdings")
+    val_rows.append(row)
 
-    if st.button("💾 Save Funds", type="primary", key="funds_save"):
-        new_items = []
-        for j, (_, row) in enumerate(edited.iterrows()):
-            if row.get("name"):
-                orig = items[j] if j < len(items) else {}
-                exit_yr = int(row.get("expected_exit_year", 0) or 0)
-                new_items.append({
-                    "id": orig.get("id", utils.new_id()),
-                    "name": row["name"],
-                    "year_invested": int(row.get("year_invested", 2024) or 2024),
-                    "expected_exit_year": exit_yr if exit_yr > 2000 else None,
-                    "committed_eur": float(row.get("committed_eur", 0) or 0),
-                    "called_eur": float(row.get("called_eur", 0) or 0),
-                    "current_nav_eur": float(row.get("current_nav_eur", 0) or 0),
-                    "expected_irr_pct": float(row.get("expected_irr_pct", 0) or 0),
-                    "access_layer": row.get("access_layer", "Direct"),
-                    "status": row.get("status", "Active"),
-                    "notes": row.get("notes", ""),
-                    "capital_call_schedule": orig.get("capital_call_schedule", []),
-                    "value_history": orig.get("value_history", {}),
-                })
-        utils.save_json(utils.DATA_DIR / "funds.json", new_items)
-        st.success("Saved!")
-        st.rerun()
+# Total row
+total_row = {"Fund": "TOTAL", "IRR": "", "Exit": ""}
+for yr_str in val_yr_strs:
+    total_row[yr_str] = sum(r.get(yr_str, 0) or 0 for r in val_rows)
+val_rows.append(total_row)
+
+val_df = pd.DataFrame(val_rows)
+val_bg, val_cell = utils.build_valuation_style_maps(val_source_map)
+
+val_result = utils.render_editable_aggrid_table(
+    val_df, key="aggrid_fund_valuations", height=min(500, 80 + 35 * len(val_rows)),
+    editable_cols=val_yr_strs, numeric_cols=val_yr_strs,
+    highlight_total_row=True, bg_style_map=val_bg, cell_style_map=val_cell,
+    editor_key="fund_valuations",
+)
+
+if st.button("💾 Save Valuations", type="primary", key="fund_save_val"):
+    all_funds = utils.load_json(utils.DATA_DIR / "funds.json", [])
+    edited_val = val_result.data if hasattr(val_result, 'data') else val_result
+    for idx, f in enumerate(active):
+        name = f.get("name", "")
+        for fund in all_funds:
+            if fund.get("name") == name:
+                vh = fund.get("value_history", {})
+                for yr_str in val_yr_strs:
+                    try:
+                        new_val = float(edited_val.iloc[idx].get(yr_str, 0) or 0)
+                    except (ValueError, TypeError, IndexError):
+                        new_val = 0
+                    orig_val = float(val_df.iloc[idx].get(yr_str, 0) or 0)
+                    if abs(new_val - orig_val) > 0.5:
+                        if new_val > 0:
+                            vh[yr_str] = new_val
+                        else:
+                            vh.pop(yr_str, None)
+                fund["value_history"] = vh
+                # Update current_nav to latest value
+                for yr in reversed(val_years):
+                    if vh.get(str(yr), 0) > 0:
+                        fund["current_nav_eur"] = vh[str(yr)]
+                        break
+                break
+    utils.save_json(utils.DATA_DIR / "funds.json", all_funds)
+    st.success("Valuations saved!")
+    st.rerun()
+
+st.divider()
+
+# ── DISTRIBUTIONS ────────────────────────────────────────────────────────
+st.subheader("Distributions")
+st.caption("Enter distribution received per fund per year-end. Positive = cash in, Negative = cash out. "
+           "All entries are 🟡 yellow (user-input). These flow into Cash Flow.")
+
+dist_years = list(range(earliest_yr, utils.CURRENT_YEAR + 6))
+dist_yr_strs = [str(y) for y in dist_years]
+
+dist_rows = []
+dist_source_map = {yr: {} for yr in dist_yr_strs}
+for idx, f in enumerate(items):
+    dh = f.get("distribution_history", {})
+    yr_inv = f.get("year_invested", 2020)
+    row = {"Fund": f.get("name", "")}
+    for yr_str in dist_yr_strs:
+        yr = int(yr_str)
+        if yr < yr_inv:
+            row[yr_str] = None
+        else:
+            val = dh.get(yr_str, 0) or 0
+            row[yr_str] = val
+            if val != 0:
+                dist_source_map[yr_str][idx] = "input"
+    row["Total"] = sum(dh.get(yr, 0) or 0 for yr in dist_yr_strs)
+    dist_rows.append(row)
+
+# Total row
+dist_total = {"Fund": "TOTAL"}
+for yr_str in dist_yr_strs:
+    dist_total[yr_str] = sum(r.get(yr_str, 0) or 0 for r in dist_rows)
+dist_total["Total"] = sum(dist_total.get(yr, 0) or 0 for yr in dist_yr_strs)
+dist_rows.append(dist_total)
+
+dist_df = pd.DataFrame(dist_rows)
+dist_bg, dist_cell = utils.build_valuation_style_maps(dist_source_map)
+
+dist_result = utils.render_editable_aggrid_table(
+    dist_df, key="aggrid_fund_distributions", height=min(400, 80 + 35 * len(dist_rows)),
+    editable_cols=dist_yr_strs, numeric_cols=dist_yr_strs + ["Total"],
+    highlight_total_row=True, bg_style_map=dist_bg, cell_style_map=dist_cell,
+    editor_key="fund_distributions",
+)
+
+if st.button("💾 Save Distributions", type="primary", key="fund_save_dist"):
+    all_funds = utils.load_json(utils.DATA_DIR / "funds.json", [])
+    edited_dist = dist_result.data if hasattr(dist_result, 'data') else dist_result
+    for idx, f_name in enumerate([f.get("name") for f in items]):
+        for fund in all_funds:
+            if fund.get("name") == f_name:
+                dh = {}
+                for yr_str in dist_yr_strs:
+                    try:
+                        val = float(edited_dist.iloc[idx].get(yr_str, 0) or 0)
+                    except (ValueError, TypeError, IndexError):
+                        val = 0
+                    if val != 0:
+                        dh[yr_str] = val
+                fund["distribution_history"] = dh
+                break
+    utils.save_json(utils.DATA_DIR / "funds.json", all_funds)
+    st.success("Distributions saved!")
+    st.rerun()

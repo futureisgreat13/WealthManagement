@@ -6,6 +6,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import utils
 
 st.title("🏷️ Symbol Classifications")
+utils.show_unsaved_warning()
 st.caption("Manage how IBKR symbols are classified into asset classes. "
            "Any symbol not listed here defaults to **Public Stock** (Equity) during import.")
 
@@ -36,6 +37,7 @@ else:
 
 st.markdown(f"**{len(display_df)} symbols** {'(filtered)' if filter_cat != 'All' else ''}")
 
+_orig_sym_class = display_df.copy()
 edited = st.data_editor(
     display_df,
     use_container_width=True,
@@ -48,6 +50,7 @@ edited = st.data_editor(
     },
     key="symbol_class_editor",
 )
+utils.track_unsaved_changes("sym_class", _orig_sym_class, edited)
 
 col1, col2 = st.columns([1, 4])
 with col1:
@@ -68,6 +71,7 @@ with col1:
         # Sort and save
         new_classifications = dict(sorted(new_classifications.items()))
         utils.save_json(utils.DATA_DIR / "symbol_classifications.json", new_classifications)
+        utils.clear_unsaved("sym_class")
         st.success(f"Saved {len(new_classifications)} symbol classifications!")
         st.rerun()
 

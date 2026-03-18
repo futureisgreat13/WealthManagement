@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import utils
 
 st.title("⚙️ FX Rates & Assumptions")
+utils.show_unsaved_warning()
 st.markdown('<style>div[data-testid="stMetric"]{padding:8px 0}div.stDataFrame,div[data-testid="stDataEditor"]{background:#111827;border:1px solid #1e3a5f;border-radius:8px;padding:4px}div[data-testid="stExpander"] summary{padding:4px 0}</style>', unsafe_allow_html=True)
 
 # --- FX Rates ---
@@ -16,6 +17,29 @@ if _last_fx:
     st.caption(f"Auto-updated: {_last_fx.strftime('%Y-%m-%d %H:%M')}")
 fx = utils.load_fx_rates()
 pairs = ["EURUSD", "EURINR", "EURGBP", "EURHKD", "EURJPY", "EURCAD", "EURAUD", "EURCHF"]
+
+# Apply live rates to widget keys if just fetched
+if "_fx_live_rates" in st.session_state:
+    for pair in pairs:
+        if pair in st.session_state["_fx_live_rates"]:
+            st.session_state[f"fx_{pair}"] = float(st.session_state["_fx_live_rates"][pair])
+    del st.session_state["_fx_live_rates"]
+
+# Live FX fetch button
+fx_btn_cols = st.columns([1, 3])
+with fx_btn_cols[0]:
+    if st.button("🔄 Fetch Live Rates", type="secondary"):
+        live = utils.fetch_live_fx_rates()
+        if live:
+            st.session_state["_fx_live_rates"] = live
+            st.session_state["_fx_live_fetched"] = True
+            st.rerun()
+        else:
+            st.error("Failed to fetch live rates")
+with fx_btn_cols[1]:
+    if st.session_state.get("_fx_live_fetched"):
+        st.success("✅ Live rates loaded! Click Save to persist.")
+        del st.session_state["_fx_live_fetched"]
 
 cols = st.columns(4)
 new_fx = {}
@@ -59,6 +83,7 @@ for col in liquid_numeric:
     if col in liquid_df.columns:
         liquid_df[col] = liquid_df[col].astype(str)
 st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable — enter scenario return rates</p>', unsafe_allow_html=True)
+_orig_fx_liquid = liquid_df.copy()
 edited_liquid = st.data_editor(liquid_df, use_container_width=True, hide_index=True, key="liquid_assumptions_editor",
     column_config={
         "Super Bear %": st.column_config.TextColumn("Super Bear %"),
@@ -68,6 +93,7 @@ edited_liquid = st.data_editor(liquid_df, use_container_width=True, hide_index=T
     },
     disabled=["Asset Class"])
 edited_liquid = utils.process_math_in_df(edited_liquid, ["Super Bear %", "Bear %", "Base %", "Bull %"], editor_key="fx_scenario_multipliers")
+utils.track_unsaved_changes("fx_liquid", _orig_fx_liquid, edited_liquid)
 
 if st.button("💾 Save Liquid Returns", type="primary", key="save_liquid_scenario"):
     existing = utils.load_assumptions()
@@ -80,6 +106,7 @@ if st.button("💾 Save Liquid Returns", type="primary", key="save_liquid_scenar
         }
     existing["Debt"] = {"super_bear": 0, "bear": 0, "base": 0, "bull": 0}
     utils.save_assumptions(existing)
+    utils.clear_unsaved("fx_liquid")
     st.success("Liquid scenario returns saved!")
 
 st.divider()
@@ -136,10 +163,12 @@ col_config = {
 for ac in IRR_BASED_ACS:
     col_config[f"{ac} Override %"] = st.column_config.TextColumn(f"{ac} Override %")
 
+_orig_fx_irr = irr_df.copy()
 edited_irr = st.data_editor(irr_df, use_container_width=True, hide_index=True,
     column_config=col_config,
     disabled=["Scenario"], key="irr_mult_editor")
 edited_irr = utils.process_math_in_df(edited_irr, irr_numeric_cols, editor_key="fx_irr_overrides")
+utils.track_unsaved_changes("fx_irr", _orig_fx_irr, edited_irr)
 
 if st.button("💾 Save IRR Settings", type="primary", key="save_irr_settings"):
     new_pe = {}
@@ -167,6 +196,7 @@ if st.button("💾 Save IRR Settings", type="primary", key="save_irr_settings"):
         existing[ac] = scenario_dict
 
     utils.save_assumptions(existing)
+    utils.clear_unsaved("fx_irr")
     st.success("IRR settings saved!")
 
 st.divider()
@@ -213,10 +243,12 @@ for col in div_numeric_cols:
         div_df[col] = div_df[col].astype(str)
 st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable — enter your values below</p>', unsafe_allow_html=True)
 st.caption("💡 Supports math expressions (e.g. 500*2) and FX shortcuts (e.g. 1000/EURUSD)")
+_orig_fx_div = div_df.copy()
 edited_divs = st.data_editor(div_df, use_container_width=True, hide_index=True,
     column_config={str(yr): st.column_config.TextColumn(str(yr)) for yr in div_years},
     disabled=["Asset Class"], key="div_history_editor")
 edited_divs = utils.process_math_in_df(edited_divs, div_numeric_cols, editor_key="fx_dividends")
+utils.track_unsaved_changes("fx_div", _orig_fx_div, edited_divs)
 
 if st.button("💾 Save Dividend History", type="primary", key="save_div_history"):
     new_actual = {}
@@ -230,6 +262,7 @@ if st.button("💾 Save Dividend History", type="primary", key="save_div_history
         new_actual[ac] = vals
     div_config["actual_dividends"] = new_actual
     utils.save_json(utils.DATA_DIR / "dividend_config.json", div_config)
+    utils.clear_unsaved("fx_div")
     st.success("Dividend history saved!")
 
 st.divider()

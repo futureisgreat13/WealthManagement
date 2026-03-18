@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import utils
 
 st.title("📊 Investment Plan")
+utils.show_unsaved_warning()
 st.markdown('<style>div[data-testid="stMetric"]{padding:8px 0}div.stDataFrame,div[data-testid="stDataEditor"]{background:#111827;border:1px solid #1e3a5f;border-radius:8px;padding:4px}div[data-testid="stExpander"] summary{padding:4px 0}</style>', unsafe_allow_html=True)
 
 fx = utils.load_fx_rates()
@@ -108,6 +109,7 @@ with tab1:
 
     st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable: Target %, Div Yield %, Default Invest/yr</p>', unsafe_allow_html=True)
     st.caption("💡 Supports math expressions (e.g. 500*2) and FX shortcuts (e.g. 1000/EURUSD)")
+    _orig_inv_plan = plan_df.copy()
     edited_plan = st.data_editor(
         plan_df, use_container_width=True, hide_index=True,
         column_config={
@@ -119,6 +121,7 @@ with tab1:
                   "Diff %", "Est. Dividends"],
     )
     edited_plan = utils.process_math_in_df(edited_plan, ["Target %", "Div Yield %", "Default Invest/yr"], editor_key="investment_plan_targets")
+    utils.track_unsaved_changes("inv_plan", _orig_inv_plan, edited_plan)
 
     if st.button("💾 Save Settings", type="primary", key="save_settings"):
         new_target = {}
@@ -135,6 +138,7 @@ with tab1:
         plan["planned_investment_yr"] = new_invest
         plan["dividend_yield_pct"] = new_yields
         utils.save_json(utils.DATA_DIR / "investment_plan.json", plan)
+        utils.clear_unsaved("inv_plan")
         st.success("Settings saved!")
         st.rerun()
 

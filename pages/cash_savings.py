@@ -6,6 +6,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import utils
 
 st.title("💶 Cash & Savings")
+utils.show_unsaved_warning()
 
 items = utils.load_json(utils.DATA_DIR / "cash.json", [])
 fx = utils.load_fx_rates()
@@ -63,6 +64,7 @@ with tab2:
         columns=["name", "bank", "currency", "amount", "interest_rate_pct", "type"])
     st.caption("💡 Supports math expressions (e.g. 500*2) and FX shortcuts (e.g. 1000/EURUSD)")
     edit_df = utils.inject_formulas_for_edit(edit_df, "cash_savings_accounts", ["amount", "interest_rate_pct"])
+    _orig_cash_pos = edit_df.copy()
     edited = st.data_editor(edit_df, use_container_width=True, hide_index=True, num_rows="dynamic",
         column_config={
             "currency": st.column_config.SelectboxColumn("Currency", options=utils.CURRENCIES),
@@ -70,6 +72,7 @@ with tab2:
             "amount": st.column_config.TextColumn("amount"),
         })
     edited = utils.process_math_in_df(edited, ["amount", "interest_rate_pct"], editor_key="cash_savings_accounts")
+    utils.track_unsaved_changes("cash_pos", _orig_cash_pos, edited)
 
     if st.button("💾 Save", type="primary", key="cash_save"):
         deleted = utils.check_deleted_items(items, edited, name_col="name")
@@ -95,6 +98,7 @@ with tab2:
                     "type": row.get("type", "Cash"),
                 })
         utils.save_json(utils.DATA_DIR / "cash.json", new_items)
+        utils.clear_unsaved("cash_pos")
         st.success("Saved!")
         st.rerun()
     elif save_result == "cancelled":

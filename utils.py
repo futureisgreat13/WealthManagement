@@ -206,6 +206,7 @@ def bloomberg_chart_layout(**overrides):
         paper_bgcolor=BG_BLACK,
         plot_bgcolor=BG_BLACK,
         font=dict(family="Consolas, monospace", size=11, color=C_LABEL),
+        title="",
         title_font=dict(color=C_ORANGE, size=13),
         xaxis=dict(
             gridcolor=GRID_LINE, zerolinecolor=BORDER,
@@ -780,7 +781,28 @@ def show_unsaved_warning():
     """Show warning if any editor has unsaved changes. Call at top of page."""
     unsaved = st.session_state.get("_unsaved_editors", set())
     if unsaved:
-        st.warning("⚠️ You have unsaved changes. Save before switching tabs or pages.")
+        # Build human-readable names from keys
+        name_map = {
+            "biz_pos": "Business Positions", "biz_val": "Business Valuation", "biz_inc": "Business Income",
+            "fund_cc": "Fund Capital Calls", "fund_val": "Fund Valuations", "fund_edit": "Fund Positions",
+            "pe_pos": "PE Positions", "pe_val": "PE Valuations",
+            "re_pos": "RE Positions", "re_val": "RE Valuations",
+            "bond_pos": "Bond Positions", "pm_pos": "Precious Metals",
+            "reit_pos": "REIT Positions", "stock_val": "Equity Valuations",
+            "cf_edit": "Cash Flow", "cash_pos": "Cash Positions",
+            "opt_pos": "Optiver Positions", "opt_val": "Optiver Valuations", "opt_bonus": "Optiver Bonus",
+            "inv_plan": "Investment Plan", "fx_liquid": "FX Liquid Returns", "fx_irr": "FX IRR Settings",
+            "fx_div": "FX Dividends", "overview_hist": "Historical Values", "sym_class": "Symbol Classifications",
+            "debt_positions": "Debt Positions", "debt_payments": "Debt Payments", "debt_valuations": "Debt Valuations",
+        }
+        names = [name_map.get(k, k) for k in sorted(unsaved)]
+        cols = st.columns([5, 1])
+        with cols[0]:
+            st.error(f"⚠️ Unsaved changes: **{', '.join(names)}**. Save before switching pages!")
+        with cols[1]:
+            if st.button("Discard All", key="_discard_unsaved", type="secondary"):
+                st.session_state["_unsaved_editors"] = set()
+                st.rerun()
 
 
 def clear_unsaved(editor_key: str):
@@ -2330,6 +2352,16 @@ def compute_cashflow_line(category: str, year: int, stored_value, cashflow_data:
     return stored_value
 
 
+def _nan_to_zero(v):
+    """Convert NaN/None/non-numeric to 0."""
+    if v is None:
+        return 0
+    try:
+        v = float(v)
+        return 0 if (v != v) else v  # NaN check: NaN != NaN
+    except (ValueError, TypeError):
+        return 0
+
 def compute_full_cashflow(cashflow_data: dict) -> dict:
     """Compute complete cashflow with auto-pull for future years.
 
@@ -2346,14 +2378,14 @@ def compute_full_cashflow(cashflow_data: dict) -> dict:
         computed_income[cat] = {}
         for y in years:
             stored = vals.get(y, 0)
-            computed_income[cat][y] = compute_cashflow_line(cat, int(y), stored, cashflow_data)
+            computed_income[cat][y] = _nan_to_zero(compute_cashflow_line(cat, int(y), stored, cashflow_data))
 
     computed_expenses = {}
     for cat, vals in expenses.items():
         computed_expenses[cat] = {}
         for y in years:
             stored = vals.get(y, 0)
-            computed_expenses[cat][y] = compute_cashflow_line(cat, int(y), stored, cashflow_data)
+            computed_expenses[cat][y] = _nan_to_zero(compute_cashflow_line(cat, int(y), stored, cashflow_data))
 
     # Now compute cash flow with carry-forward
     results = {}
@@ -2367,8 +2399,8 @@ def compute_full_cashflow(cashflow_data: dict) -> dict:
         else:
             old_cash = prev_cash
 
-        total_inc = sum(computed_income[cat].get(y, 0) for cat in computed_income)
-        total_exp = sum(computed_expenses[cat].get(y, 0) for cat in computed_expenses)
+        total_inc = sum(_nan_to_zero(computed_income[cat].get(y, 0)) for cat in computed_income)
+        total_exp = sum(_nan_to_zero(computed_expenses[cat].get(y, 0)) for cat in computed_expenses)
         cash_left = old_cash + total_inc - total_exp
 
         results[y] = {

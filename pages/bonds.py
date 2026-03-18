@@ -9,6 +9,7 @@ import utils
 st.title("📄 Bonds")
 st.markdown('<style>div[data-testid="stMetric"]{padding:8px 0}div.stDataFrame,div[data-testid="stDataEditor"]{background:#111827;border:1px solid #1e3a5f;border-radius:8px;padding:4px}div[data-testid="stExpander"] summary{padding:4px 0}</style>', unsafe_allow_html=True)
 utils.render_year_end_alert("Bonds")
+utils.show_unsaved_warning()
 
 items = utils.load_json(utils.DATA_DIR / "bonds.json", [])
 
@@ -136,6 +137,7 @@ with tab2:
     formula_map = utils.get_formula_map("bonds_valuations", len(proj_df), ["Value (EUR)", "New Capital"])
 
     st.caption("🟡 Yellow = user input. Default = formula. Double-click to edit. Supports math (e.g. =500*2).")
+    _orig_bond_pos = proj_df.copy()
     grid_result = utils.render_editable_aggrid_table(
         proj_df, key="bonds_valuation_aggrid",
         editable_cols=["Value (EUR)", "New Capital"],
@@ -145,6 +147,7 @@ with tab2:
         height=min(500, max(200, len(rows) * 28 + 40)),
     )
     edited_vh = grid_result.data
+    utils.track_unsaved_changes("bond_pos", _orig_bond_pos, edited_vh)
     edited_vh = utils.process_math_in_df(edited_vh, ["Value (EUR)", "New Capital"], editor_key="bonds_valuations")
 
     if st.button("💾 Save Changes", type="primary", key="bonds_val_save"):
@@ -176,6 +179,7 @@ with tab2:
         by_year["Bonds"] = ac_years
         plan["planned_investment_by_year"] = by_year
         utils.save_json(utils.DATA_DIR / "investment_plan.json", plan)
+        utils.clear_unsaved("bond_pos")
         st.success("Saved!")
         st.rerun()
 

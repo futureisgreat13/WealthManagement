@@ -9,6 +9,7 @@ import utils
 st.title("💼 Private Equity")
 st.markdown('<style>div[data-testid="stMetric"]{padding:8px 0}div.stDataFrame,div[data-testid="stDataEditor"]{background:#111827;border:1px solid #1e3a5f;border-radius:8px;padding:4px}div[data-testid="stExpander"] summary{padding:4px 0}</style>', unsafe_allow_html=True)
 utils.render_year_end_alert("Private Equity")
+utils.show_unsaved_warning()
 
 items = utils.load_json(utils.DATA_DIR / "private_equity.json", [])
 
@@ -68,6 +69,7 @@ with tab1:
         st.caption("💡 Supports math expressions (e.g. 500*2) and FX shortcuts (e.g. 1000/EURUSD)")
         pe_pos_numeric_cols = ["amount_invested_eur", "exit_value_eur", "annual_dividend_eur", "expected_irr_pct", "success_probability_pct"]
         edit_df = utils.inject_formulas_for_edit(edit_df, "private_equity_positions", pe_pos_numeric_cols)
+        _orig_pe_pos = edit_df.copy()
         edited = st.data_editor(edit_df, use_container_width=True, hide_index=True, num_rows="dynamic",
             height=row_height,
             column_config={
@@ -79,6 +81,7 @@ with tab1:
                 "success_probability_pct": st.column_config.TextColumn("Prob %"),
             })
         edited = utils.process_math_in_df(edited, ["amount_invested_eur", "exit_value_eur", "annual_dividend_eur", "expected_irr_pct", "success_probability_pct"], editor_key="private_equity_positions")
+        utils.track_unsaved_changes("pe_pos", _orig_pe_pos, edited)
 
         if st.button("💾 Save Positions", type="primary", key="pe_save"):
             deleted = utils.check_deleted_items(items, edited, name_col="name")
@@ -112,6 +115,7 @@ with tab1:
                         "value_history": orig.get("value_history", {}),
                     })
             utils.save_json(utils.DATA_DIR / "private_equity.json", new_items)
+            utils.clear_unsaved("pe_pos")
             st.success("Saved!")
             st.rerun()
         elif save_result == "cancelled":
@@ -334,6 +338,7 @@ with tab2:
 
     row_height = min(500, max(250, len(proj_rows) * 35 + 50))
 
+    _orig_pe_val = proj_df.copy()
     val_result = utils.render_editable_aggrid_table(
         proj_df, key="aggrid_pe_valuations", height=row_height,
         editable_cols=year_strs,
@@ -344,6 +349,7 @@ with tab2:
         editor_key="private_equity_valuations",
     )
     edited_proj = val_result.data if hasattr(val_result, 'data') else val_result
+    utils.track_unsaved_changes("pe_val", _orig_pe_val, edited_proj)
 
     if st.button("💾 Save Valuations", type="primary", key="pe_save_valuations"):
         all_items = utils.load_json(utils.DATA_DIR / "private_equity.json", [])
@@ -373,6 +379,7 @@ with tab2:
                                 break
                     break
         utils.save_json(utils.DATA_DIR / "private_equity.json", all_items)
+        utils.clear_unsaved("pe_val")
         st.success("Valuations saved! Projections will update.")
         st.rerun()
 

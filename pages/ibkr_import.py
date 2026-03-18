@@ -239,10 +239,14 @@ if existing_flows:
             edit_rows.append({"Asset Class": ac, "Year": yr, "Net Capital (EUR)": amt})
     if edit_rows:
         edit_df = pd.DataFrame(edit_rows)
+        # Cast to str for TextColumn compatibility
+        edit_df["Year"] = edit_df["Year"].astype(str)
+        edit_df["Net Capital (EUR)"] = edit_df["Net Capital (EUR)"].astype(str)
         edited = st.data_editor(edit_df, use_container_width=True, hide_index=True,
             num_rows="dynamic",
             column_config={
                 "Net Capital (EUR)": st.column_config.TextColumn("Net Capital (EUR)"),
+                "Year": st.column_config.TextColumn("Year"),
                 "Asset Class": st.column_config.SelectboxColumn(
                     options=["Equity", "REIT", "Precious Metals", "Bond"]),
             },

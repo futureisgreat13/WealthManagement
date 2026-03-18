@@ -8,6 +8,7 @@ import utils
 st.title("📈 Equity")
 st.markdown('<style>div[data-testid="stMetric"]{padding:8px 0}div.stDataFrame,div[data-testid="stDataEditor"]{background:#111827;border:1px solid #1e3a5f;border-radius:8px;padding:4px}div[data-testid="stExpander"] summary{padding:4px 0}</style>', unsafe_allow_html=True)
 utils.render_year_end_alert("Equity")
+utils.show_unsaved_warning()
 
 positions = utils.load_json(utils.DATA_DIR / "public_stocks.json", [])
 stocks = [p for p in positions if p.get("type") in ("Equity", "ETF")]
@@ -188,6 +189,7 @@ with tab2:
     formula_map = utils.get_formula_map("public_stocks_valuations", len(proj_df), ["Value (EUR)", "New Capital"])
 
     st.caption("🟡 Yellow = user input. 🔵 Blue = IBKR import. Default = formula. Double-click to edit. Supports math (e.g. =500*2, 1000/EURUSD).")
+    _orig_stock_val = proj_df.copy()
     grid_result = utils.render_editable_aggrid_table(
         proj_df, key="eq_valuation_aggrid",
         editable_cols=["Value (EUR)", "New Capital"],
@@ -200,6 +202,7 @@ with tab2:
     )
     edited = grid_result.data
     edited = utils.process_math_in_df(edited, ["Value (EUR)", "New Capital"], editor_key="public_stocks_valuations")
+    utils.track_unsaved_changes("stock_val", _orig_stock_val, edited)
 
     if st.button("💾 Save Changes", type="primary", key="eq_val_save"):
         # Save year-end value overrides
@@ -240,6 +243,7 @@ with tab2:
         by_year["Equity"] = ac_years
         plan["planned_investment_by_year"] = by_year
         utils.save_json(utils.DATA_DIR / "investment_plan.json", plan)
+        utils.clear_unsaved("stock_val")
         st.success("Saved!")
         st.rerun()
 

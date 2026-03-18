@@ -8,6 +8,7 @@ import utils
 st.title("🏭 Business")
 st.markdown('<style>div[data-testid="stMetric"]{padding:8px 0}div.stDataFrame,div[data-testid="stDataEditor"]{background:#111827;border:1px solid #1e3a5f;border-radius:8px;padding:4px}div[data-testid="stExpander"] summary{padding:4px 0}</style>', unsafe_allow_html=True)
 utils.render_year_end_alert("Business")
+utils.show_unsaved_warning()
 
 items = utils.load_json(utils.DATA_DIR / "business.json", [])
 active_biz = [b for b in items if b.get("status") == "Active"]
@@ -40,6 +41,7 @@ numeric_text_cols = ["initial_investment_eur", "expected_annual_cashflow_eur", "
 st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable — enter your values below</p>', unsafe_allow_html=True)
 st.caption("💡 Supports math expressions (e.g. 500*2) and FX shortcuts (e.g. 1000/EURUSD)")
 edit_df = utils.inject_formulas_for_edit(edit_df, "business_positions", numeric_text_cols)
+_orig_biz_pos = edit_df.copy()
 edited = st.data_editor(edit_df, use_container_width=True, hide_index=True, num_rows="dynamic",
     column_config={
         "status": st.column_config.SelectboxColumn("Status", options=["Active", "Closed", "For Sale"]),
@@ -50,6 +52,7 @@ edited = st.data_editor(edit_df, use_container_width=True, hide_index=True, num_
         "exit_sale_value_eur": st.column_config.TextColumn("exit_sale_value_eur"),
     })
 edited = utils.process_math_in_df(edited, numeric_text_cols, editor_key="business_positions")
+utils.track_unsaved_changes("biz_pos", _orig_biz_pos, edited)
 
 if st.button("💾 Save Positions", type="primary"):
     deleted = utils.check_deleted_items(items, edited, name_col="name")
@@ -83,6 +86,7 @@ if save_result == "save":
                 "value_history": orig.get("value_history", {}),
             })
     utils.save_json(utils.DATA_DIR / "business.json", new_items)
+    utils.clear_unsaved("biz_pos")
     st.success("Saved!")
     st.rerun()
 elif save_result == "cancelled":
@@ -128,6 +132,7 @@ if items:
     val_df = pd.DataFrame(val_rows)
     bg_style_map, cell_style_map = utils.build_valuation_style_maps(col_source_map)
 
+    _orig_biz_val = val_df.copy()
     val_result = utils.render_editable_aggrid_table(
         val_df, key="aggrid_business_valuation", height=min(300, 80 + 35 * len(val_rows)),
         editable_cols=yr_cols,
@@ -137,6 +142,7 @@ if items:
         cell_style_map=cell_style_map,
         editor_key="business_valuation",
     )
+    utils.track_unsaved_changes("biz_val", _orig_biz_val, val_result.data if hasattr(val_result, 'data') else val_result)
 
     if st.button("💾 Save Valuation", key="save_biz_val"):
         edited_val = val_result.data if hasattr(val_result, 'data') else val_result
@@ -157,6 +163,7 @@ if items:
                     vh.pop(yr_col, None)
             items[idx]["value_history"] = vh
         utils.save_json(utils.DATA_DIR / "business.json", items)
+        utils.clear_unsaved("biz_val")
         st.success("Valuation saved!")
         st.rerun()
 else:
@@ -207,6 +214,7 @@ if items:
     inc_df = pd.DataFrame(inc_rows)
     inc_bg_map, inc_cell_map = utils.build_valuation_style_maps(inc_source_map)
 
+    _orig_biz_inc = inc_df.copy()
     inc_result = utils.render_editable_aggrid_table(
         inc_df, key="aggrid_business_income", height=min(300, 80 + 35 * len(inc_rows)),
         editable_cols=inc_yr_cols,
@@ -216,6 +224,7 @@ if items:
         cell_style_map=inc_cell_map,
         editor_key="business_income",
     )
+    utils.track_unsaved_changes("biz_inc", _orig_biz_inc, inc_result.data if hasattr(inc_result, 'data') else inc_result)
 
     if st.button("💾 Save Income", key="save_biz_inc"):
         edited_inc = inc_result.data if hasattr(inc_result, 'data') else inc_result
@@ -243,6 +252,7 @@ if items:
                     ih[k] = v
             items[idx]["income_history"] = ih
         utils.save_json(utils.DATA_DIR / "business.json", items)
+        utils.clear_unsaved("biz_inc")
         st.success("Income saved!")
         st.rerun()
 else:

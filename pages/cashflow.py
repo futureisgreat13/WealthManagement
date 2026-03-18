@@ -5,9 +5,21 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import utils
+import math
+
+def _sround(v):
+    """Safe round — returns 0 for NaN/None."""
+    if v is None:
+        return 0
+    try:
+        v = float(v)
+        return round(v) if not (math.isnan(v) or math.isinf(v)) else 0
+    except (ValueError, TypeError):
+        return 0
 
 utils.inject_bloomberg_css()
 st.title("Cash Flow")
+utils.show_unsaved_warning()
 utils.render_year_end_alert("Cash")
 utils.render_year_end_alert("Cashflow")
 
@@ -35,21 +47,21 @@ years = all_years if show_all else default_years
 current_yr = str(utils.CURRENT_YEAR)
 cur = cf_results.get(current_yr, {})
 c1, c2, c3, c4 = st.columns(4)
-c1.metric("OLD CASH", utils.fmt_eur(cur.get("old_cash", 0)), f"Start {current_yr}")
-c2.metric("INCOME", utils.fmt_eur(cur.get("total_income", 0)), current_yr)
-c3.metric("EXPENSES", utils.fmt_eur(cur.get("total_expenses", 0)), current_yr)
-c4.metric("CASH LEFT", utils.fmt_eur(cur.get("cash_left", 0)), f"End {current_yr}")
+c1.metric("OLD CASH", utils.fmt_eur(_sround(cur.get("old_cash", 0))), f"Start {current_yr}")
+c2.metric("INCOME", utils.fmt_eur(_sround(cur.get("total_income", 0))), current_yr)
+c3.metric("EXPENSES", utils.fmt_eur(_sround(cur.get("total_expenses", 0))), current_yr)
+c4.metric("CASH LEFT", utils.fmt_eur(_sround(cur.get("cash_left", 0))), f"End {current_yr}")
 
 # ── COMPACT CHART ──
 fig = go.Figure()
 fig.add_trace(go.Bar(
-    x=all_years, y=[cf_results[y]["total_income"] for y in all_years],
+    x=all_years, y=[_sround(cf_results[y]["total_income"]) for y in all_years],
     name="Income", marker_color=utils.C_GREEN, opacity=0.5))
 fig.add_trace(go.Bar(
-    x=all_years, y=[-cf_results[y]["total_expenses"] for y in all_years],
+    x=all_years, y=[-_sround(cf_results[y]["total_expenses"]) for y in all_years],
     name="Expenses", marker_color=utils.C_RED, opacity=0.5))
 fig.add_trace(go.Scatter(
-    x=all_years, y=[cf_results[y]["cash_left"] for y in all_years],
+    x=all_years, y=[_sround(cf_results[y]["cash_left"]) for y in all_years],
     name="Cash Left", mode="lines+markers",
     line=dict(color=utils.C_ORANGE, width=2), marker=dict(size=4),
     hovertemplate="%{x}: €%{y:,.0f}<extra>Cash Left</extra>",
@@ -77,7 +89,7 @@ row_categories = []
 # --- Old Cash ---
 old_row = {"Category": "OLD CASH"}
 for y in years:
-    old_row[y] = round(cf_results[y]["old_cash"])
+    old_row[y] = _sround(cf_results[y]["old_cash"])
 display_rows.append(old_row)
 row_is_manual.append(False)
 row_categories.append(("computed", "old_cash"))
@@ -124,14 +136,14 @@ row_categories.append(("computed", "total_expenses"))
 
 net_row = {"Category": "NET CASH FLOW"}
 for y in years:
-    net_row[y] = round(cf_results[y]["net_cf"])
+    net_row[y] = _sround(cf_results[y]["net_cf"])
 display_rows.append(net_row)
 row_is_manual.append(False)
 row_categories.append(("computed", "net_cf"))
 
 cash_row = {"Category": "CASH LEFT"}
 for y in years:
-    cash_row[y] = round(cf_results[y]["cash_left"])
+    cash_row[y] = _sround(cf_results[y]["cash_left"])
 display_rows.append(cash_row)
 row_is_manual.append(False)
 row_categories.append(("computed", "cash_left"))
@@ -212,7 +224,7 @@ with st.expander("Edit Manual Values", expanded=False):
             continue
         row = {"Category": label}
         for y in years:
-            row[y] = round(cf_results[y]["computed_income"].get(label, 0))
+            row[y] = _sround(cf_results[y]["computed_income"].get(label, 0))
         edit_rows.append(row)
         edit_row_mapping.append(("income", label))
 
@@ -221,7 +233,7 @@ with st.expander("Edit Manual Values", expanded=False):
             continue
         row = {"Category": label}
         for y in years:
-            row[y] = round(cf_results[y]["computed_expenses"].get(label, 0))
+            row[y] = _sround(cf_results[y]["computed_expenses"].get(label, 0))
         edit_rows.append(row)
         edit_row_mapping.append(("expense", label))
 
@@ -232,6 +244,11 @@ with st.expander("Edit Manual Values", expanded=False):
     edit_row_mapping.append(("actual_cash", "actual_cash"))
 
     edit_df = pd.DataFrame(edit_rows)
+    # Cast year columns to str for TextColumn compatibility
+    for y in years:
+        if y in edit_df.columns:
+            edit_df[y] = edit_df[y].astype(str)
+    _orig_cf_edit = edit_df.copy()
     edited = st.data_editor(edit_df, use_container_width=True, hide_index=True,
         column_config={
             "Category": st.column_config.TextColumn(width="small"),
@@ -240,6 +257,7 @@ with st.expander("Edit Manual Values", expanded=False):
         disabled=["Category"],
         key="cashflow_unified_editor")
     edited = utils.process_math_in_df(edited, years, editor_key="cashflow_income")
+    utils.track_unsaved_changes("cf_edit", _orig_cf_edit, edited)
 
     if st.button("Save Changes", type="primary", key="cashflow_save"):
         for i, (_, row) in enumerate(edited.iterrows()):
@@ -264,6 +282,7 @@ with st.expander("Edit Manual Values", expanded=False):
         data["income"] = income
         data["expenses"] = expenses
         utils.save_json(utils.DATA_DIR / "cashflow.json", data)
+        utils.clear_unsaved("cf_edit")
         st.success("Saved!")
         st.rerun()
 

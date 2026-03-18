@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import utils
 
 st.title("⚡ Optiver")
+utils.show_unsaved_warning()
 
 data = utils.load_json(utils.DATA_DIR / "optiver.json", {
     "free_share_price": 10000, "bound_share_price": 3631,
@@ -42,6 +43,7 @@ def shares_editor(tab_key: str, share_list: list, price_key: str, price_val: flo
 
     st.caption("💡 Supports math expressions (e.g. 500*2) and FX shortcuts (e.g. 1000/EURUSD)")
     editor_key = f"optiver_{tab_key}_shares"
+    _orig_shares = display_df.copy()
     edited = st.data_editor(display_df, width="stretch", hide_index=True, num_rows="dynamic",
         column_config={
             "year": st.column_config.NumberColumn("Year", format="%d"),
@@ -49,6 +51,7 @@ def shares_editor(tab_key: str, share_list: list, price_key: str, price_val: flo
             "invested_amount": st.column_config.NumberColumn("Invested (EUR)", format="€%.0f"),
         })
     edited = utils.process_math_in_df(edited, ["shares_added", "invested_amount"], editor_key=editor_key)
+    utils.track_unsaved_changes(f"opt_pos_{tab_key}", _orig_shares, edited)
     return new_price, edited
 
 with tab1:
@@ -62,6 +65,7 @@ with tab3:
     div_df = pd.DataFrame(divs if divs else [], columns=["id", "year", "div_per_share", "shares_eligible", "tax", "net_dividend"])
     display_div = div_df[["year", "div_per_share", "shares_eligible", "tax", "net_dividend"]].copy() if not div_df.empty else pd.DataFrame(columns=["year", "div_per_share", "shares_eligible", "tax", "net_dividend"])
     st.caption("💡 Supports math expressions (e.g. 500*2) and FX shortcuts (e.g. 1000/EURUSD)")
+    _orig_opt_bonus = display_div.copy()
     edited_divs = st.data_editor(display_div, width="stretch", hide_index=True, num_rows="dynamic",
         column_config={
             "year": st.column_config.NumberColumn("Year", format="%d"),
@@ -71,6 +75,7 @@ with tab3:
             "net_dividend": st.column_config.NumberColumn("Net Dividend (EUR)", format="€%.0f"),
         })
     edited_divs = utils.process_math_in_df(edited_divs, ["div_per_share", "shares_eligible", "tax", "net_dividend"], editor_key="optiver_dividends")
+    utils.track_unsaved_changes("opt_bonus", _orig_opt_bonus, edited_divs)
 
 with tab4:
     st.subheader("Valuations")
@@ -207,6 +212,7 @@ with tab4:
     override_df = pd.DataFrame(override_rows_data)
     st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable — enter your values below</p>', unsafe_allow_html=True)
     st.caption("💡 Supports math expressions (e.g. 500*2) and FX shortcuts (e.g. 1000/EURUSD)")
+    _orig_opt_val = override_df.copy()
     edited_overrides = st.data_editor(override_df, use_container_width=True, hide_index=True,
         column_config={
             "Free (EUR)": st.column_config.NumberColumn(format="€%.0f"),
@@ -214,6 +220,7 @@ with tab4:
         },
         disabled=["Year"], key="optiver_override_editor")
     edited_overrides = utils.process_math_in_df(edited_overrides, ["Free (EUR)", "Bound (EUR)"], editor_key="optiver_year_end_overrides")
+    utils.track_unsaved_changes("opt_val", _orig_opt_val, edited_overrides)
 
 st.divider()
 
@@ -271,5 +278,9 @@ if st.button("💾 Save Optiver Data", type="primary"):
         "year_end_values": new_yev,
     }
     utils.save_json(utils.DATA_DIR / "optiver.json", new_data)
+    utils.clear_unsaved("opt_pos_free")
+    utils.clear_unsaved("opt_pos_bound")
+    utils.clear_unsaved("opt_bonus")
+    utils.clear_unsaved("opt_val")
     st.success("Saved!")
     st.rerun()

@@ -9,6 +9,7 @@ import utils
 st.title("🏠 Real Estate")
 st.markdown('<style>div[data-testid="stMetric"]{padding:8px 0}div.stDataFrame,div[data-testid="stDataEditor"]{background:#111827;border:1px solid #1e3a5f;border-radius:8px;padding:4px}div[data-testid="stExpander"] summary{padding:4px 0}</style>', unsafe_allow_html=True)
 utils.render_year_end_alert("Real Estate")
+utils.show_unsaved_warning()
 
 items = utils.load_json(utils.DATA_DIR / "real_estate.json", [])
 
@@ -70,6 +71,7 @@ with tab1:
     edit_df = utils.inject_formulas_for_edit(edit_df, "real_estate_properties", ["amount_invested_eur", "current_value_eur", "exit_value_eur",
                                                  "annual_rental_eur", "mortgage_total_eur", "mortgage_outstanding_eur",
                                                  "expected_irr_pct", "success_probability_pct"])
+    _orig_re_pos = edit_df.copy()
     edited = st.data_editor(edit_df, use_container_width=True, hide_index=True, num_rows="dynamic",
         height=row_height,
         column_config={
@@ -86,6 +88,7 @@ with tab1:
     edited = utils.process_math_in_df(edited, ["amount_invested_eur", "current_value_eur", "exit_value_eur",
                                                  "annual_rental_eur", "mortgage_total_eur", "mortgage_outstanding_eur",
                                                  "expected_irr_pct", "success_probability_pct"], editor_key="real_estate_properties")
+    utils.track_unsaved_changes("re_pos", _orig_re_pos, edited)
 
     if st.button("💾 Save Properties", type="primary", key="re_save"):
         deleted = utils.check_deleted_items(items, edited, name_col="name")
@@ -120,6 +123,7 @@ with tab1:
                     "value_history": orig.get("value_history", {}),
                 })
         utils.save_json(utils.DATA_DIR / "real_estate.json", new_items)
+        utils.clear_unsaved("re_pos")
         st.success("Saved!")
         st.rerun()
     elif save_result == "cancelled":
@@ -278,10 +282,12 @@ with tab2:
         col_config[yr_str] = st.column_config.TextColumn(yr_str)
 
     proj_df = utils.inject_formulas_for_edit(proj_df, "real_estate_valuations", year_strs)
+    _orig_re_val = proj_df.copy()
     edited_proj = st.data_editor(proj_df, use_container_width=True, hide_index=True,
         height=row_height, column_config=col_config,
         disabled=["Name", "Current", "IRR", "Prob", "Year In"], key="re_valuation_editor")
     edited_proj = utils.process_math_in_df(edited_proj, year_strs, editor_key="real_estate_valuations")
+    utils.track_unsaved_changes("re_val", _orig_re_val, edited_proj)
 
     if st.button("💾 Save Valuations", type="primary", key="re_save_valuations"):
         all_re = utils.load_json(utils.DATA_DIR / "real_estate.json", [])
@@ -310,6 +316,7 @@ with tab2:
                                 break
                     break
         utils.save_json(utils.DATA_DIR / "real_estate.json", all_re)
+        utils.clear_unsaved("re_val")
         st.success("Valuations saved! Projections will update.")
         st.rerun()
 

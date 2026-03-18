@@ -218,7 +218,8 @@ if all_debt:
             else:
                 # Project: prev_balance * (1 + rate) - payment
                 payment = float(ph.get(yr_str, annual))
-                projected = max(prev_bal * (1 + rate) - payment, 0)
+                projected = prev_bal * (1 + rate) - payment
+                projected = max(projected, 0) if projected == projected else 0  # NaN safety
                 row[yr_str] = round(projected, 0)
                 val_source_map[yr_str][idx] = "formula"
                 prev_bal = projected
