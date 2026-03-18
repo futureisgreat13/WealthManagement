@@ -8,10 +8,11 @@ import utils
 
 st.title("💼 Private Equity")
 st.markdown('<style>div[data-testid="stMetric"]{padding:8px 0}div.stDataFrame,div[data-testid="stDataEditor"]{background:#111827;border:1px solid #1e3a5f;border-radius:8px;padding:4px}div[data-testid="stExpander"] summary{padding:4px 0}</style>', unsafe_allow_html=True)
+utils.render_year_end_alert("Private Equity")
 
 items = utils.load_json(utils.DATA_DIR / "private_equity.json", [])
 
-active = [i for i in items if i.get("status") == "Active" and i.get("type") != "Real Estate"]
+active = [i for i in items if i.get("status") == "Active"]
 exited = [i for i in items if i.get("status") == "Exited"]
 written_off = [i for i in items if i.get("status") == "Written Off"]
 
@@ -23,24 +24,6 @@ pe_val_latest = utils.compute_pe_timeline([latest_yr_int], "Base")
 total_current = pe_val_latest[0] if pe_val_latest else 0
 year_label = f" ({latest_yr_int} YE)"
 
-# Check if any items are missing year-end values for latest year
-val_items = utils._get_pe_valuation_items()
-missing_items = []
-for p in val_items:
-    status = p.get("status", "Active")
-    exit_yr = p.get("expected_exit_year", 9999)
-    yr_invested = p.get("year_invested", 9999)
-    if latest_yr_int < yr_invested:
-        continue
-    if status == "Exited" and latest_yr_int >= exit_yr:
-        continue
-    vh = p.get("value_history", {})
-    if str(latest_yr_int) not in vh:
-        missing_items.append(p.get("name", "Unknown"))
-missing_note = ""
-if missing_items:
-    missing_note = f' <span style="color:red">* {len(missing_items)} items without {latest_yr_int} valuation</span>'
-
 total_exit_proceeds = sum(i.get("exit_value_eur", i.get("current_value_eur", 0)) for i in exited)
 total_dividends = sum(i.get("annual_dividend_eur", 0) for i in active)
 total_moic = (total_current + total_exit_proceeds) / total_invested if total_invested > 0 else 0
@@ -51,8 +34,6 @@ c2.metric("Total Invested", utils.fmt_eur(total_invested))
 c3.metric("Exit Proceeds", utils.fmt_eur(total_exit_proceeds))
 c4.metric("Annual Dividends", utils.fmt_eur(total_dividends))
 c5.metric("MOIC", f"{total_moic:.2f}x")
-if missing_note:
-    st.markdown(missing_note, unsafe_allow_html=True)
 
 st.divider()
 
@@ -66,9 +47,7 @@ with tab1:
         edit_rows = [{
             "name": p.get("name", ""),
             "year_invested": p.get("year_invested", 2020),
-            "type": p.get("type", "Private Equity"),
             "amount_invested_eur": p.get("amount_invested_eur", 0),
-            "current_value_eur": p.get("current_value_eur", 0),
             "exit_value_eur": p.get("exit_value_eur", 0),
             "annual_dividend_eur": p.get("annual_dividend_eur", 0),
             "expected_irr_pct": p.get("expected_irr_pct", 0),
@@ -79,29 +58,27 @@ with tab1:
         } for p in items]
 
         edit_df = pd.DataFrame(edit_rows) if edit_rows else pd.DataFrame(
-            columns=["name", "year_invested", "type", "amount_invested_eur",
-                     "current_value_eur", "exit_value_eur", "annual_dividend_eur",
+            columns=["name", "year_invested", "amount_invested_eur",
+                     "exit_value_eur", "annual_dividend_eur",
                      "expected_irr_pct", "success_probability_pct",
                      "expected_exit_year", "status", "notes"])
 
         row_height = min(500, max(250, len(edit_rows) * 32 + 40))
         st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable — add/edit positions directly. Add rows at the bottom.</p>', unsafe_allow_html=True)
         st.caption("💡 Supports math expressions (e.g. 500*2) and FX shortcuts (e.g. 1000/EURUSD)")
-        pe_pos_numeric_cols = ["amount_invested_eur", "current_value_eur", "exit_value_eur", "annual_dividend_eur", "expected_irr_pct", "success_probability_pct"]
+        pe_pos_numeric_cols = ["amount_invested_eur", "exit_value_eur", "annual_dividend_eur", "expected_irr_pct", "success_probability_pct"]
         edit_df = utils.inject_formulas_for_edit(edit_df, "private_equity_positions", pe_pos_numeric_cols)
         edited = st.data_editor(edit_df, use_container_width=True, hide_index=True, num_rows="dynamic",
             height=row_height,
             column_config={
                 "status": st.column_config.SelectboxColumn("Status", options=["Active", "Exited", "Written Off"]),
-                "type": st.column_config.SelectboxColumn("Type", options=["Private Equity", "Venture Capital", "Fund", "Other"]),
                 "amount_invested_eur": st.column_config.TextColumn("Invested (EUR)"),
-                "current_value_eur": st.column_config.TextColumn("Current Value"),
                 "exit_value_eur": st.column_config.TextColumn("Exit Value"),
                 "annual_dividend_eur": st.column_config.TextColumn("Dividend/yr"),
                 "expected_irr_pct": st.column_config.TextColumn("IRR %"),
                 "success_probability_pct": st.column_config.TextColumn("Prob %"),
             })
-        edited = utils.process_math_in_df(edited, ["amount_invested_eur", "current_value_eur", "exit_value_eur", "annual_dividend_eur", "expected_irr_pct", "success_probability_pct"], editor_key="private_equity_positions")
+        edited = utils.process_math_in_df(edited, ["amount_invested_eur", "exit_value_eur", "annual_dividend_eur", "expected_irr_pct", "success_probability_pct"], editor_key="private_equity_positions")
 
         if st.button("💾 Save Positions", type="primary", key="pe_save"):
             new_items = []
@@ -112,9 +89,9 @@ with tab1:
                         "id": orig.get("id", utils.new_id()),
                         "name": row["name"],
                         "year_invested": int(row.get("year_invested", 2020) or 2020),
-                        "type": row.get("type", "Private Equity"),
+                        "type": orig.get("type", "Private Equity"),
                         "amount_invested_eur": float(row.get("amount_invested_eur", 0) or 0),
-                        "current_value_eur": float(row.get("current_value_eur", 0) or 0),
+                        "current_value_eur": orig.get("current_value_eur", 0),
                         "exit_value_eur": float(row.get("exit_value_eur", 0) or 0),
                         "annual_dividend_eur": float(row.get("annual_dividend_eur", 0) or 0),
                         "expected_irr_pct": float(row.get("expected_irr_pct", 0) or 0),
@@ -332,22 +309,29 @@ with tab2:
     orig_df = proj_df.copy()
     year_strs = [str(yr) for yr in years_list]
 
-    row_height = min(500, max(250, len(proj_rows) * 32 + 40))
-    st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable — edit year cells to set actual values. Set to 0 to clear an override. Math expressions supported.</p>', unsafe_allow_html=True)
-
-    col_config = {
-        "Name": st.column_config.TextColumn("Name"),
-        "Current": st.column_config.TextColumn("Current"),
-        "Year In": st.column_config.TextColumn("Year In"),
-    }
+    # Build coloring: yellow for user-entered actuals, default for formula
+    col_source_map = {}
     for yr_str in year_strs:
-        col_config[yr_str] = st.column_config.TextColumn(yr_str)
+        col_map = {}
+        for row_idx in range(len(val_items)):
+            if is_actual_map.get((row_idx, yr_str), False):
+                col_map[row_idx] = "input"
+        if col_map:
+            col_source_map[yr_str] = col_map
+    bg_style_map, cell_style_map = utils.build_valuation_style_maps(col_source_map)
 
-    proj_df = utils.inject_formulas_for_edit(proj_df, "private_equity_valuations", year_strs)
-    edited_proj = st.data_editor(proj_df, use_container_width=True, hide_index=True,
-        height=row_height, column_config=col_config,
-        disabled=["Name", "Current", "IRR", "Prob", "Year In"], key="pe_valuation_editor")
-    edited_proj = utils.process_math_in_df(edited_proj, year_strs, editor_key="private_equity_valuations")
+    row_height = min(500, max(250, len(proj_rows) * 35 + 50))
+
+    val_result = utils.render_editable_aggrid_table(
+        proj_df, key="aggrid_pe_valuations", height=row_height,
+        editable_cols=year_strs,
+        numeric_cols=year_strs + ["Current"],
+        highlight_total_row=True,
+        bg_style_map=bg_style_map,
+        cell_style_map=cell_style_map,
+        editor_key="private_equity_valuations",
+    )
+    edited_proj = val_result.data if hasattr(val_result, 'data') else val_result
 
     if st.button("💾 Save Valuations", type="primary", key="pe_save_valuations"):
         all_items = utils.load_json(utils.DATA_DIR / "private_equity.json", [])

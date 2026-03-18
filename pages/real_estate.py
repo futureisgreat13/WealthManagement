@@ -8,6 +8,7 @@ import utils
 
 st.title("🏠 Real Estate")
 st.markdown('<style>div[data-testid="stMetric"]{padding:8px 0}div.stDataFrame,div[data-testid="stDataEditor"]{background:#111827;border:1px solid #1e3a5f;border-radius:8px;padding:4px}div[data-testid="stExpander"] summary{padding:4px 0}</style>', unsafe_allow_html=True)
+utils.render_year_end_alert("Real Estate")
 
 items = utils.load_json(utils.DATA_DIR / "real_estate.json", [])
 
@@ -26,32 +27,12 @@ total_current = re_val_latest[0] if re_val_latest else 0
 year_label = f" ({latest_yr_int} YE)"
 net_equity = total_current - total_mortgage
 
-# Check if any items are missing year-end values for latest year
-val_items = utils._get_re_valuation_items()
-missing_items = []
-for p in val_items:
-    status = p.get("status", "Active")
-    exit_yr = p.get("expected_exit_year", 9999)
-    yr_invested = p.get("year_invested", 9999)
-    if latest_yr_int < yr_invested:
-        continue
-    if status == "Exited" and latest_yr_int >= exit_yr:
-        continue
-    vh = p.get("value_history", {})
-    if str(latest_yr_int) not in vh:
-        missing_items.append(p.get("name", "Unknown"))
-missing_note = ""
-if missing_items:
-    missing_note = f' <span style="color:red">* {len(missing_items)} items without {latest_yr_int} valuation</span>'
-
 c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric(f"Active Value{year_label}", utils.fmt_eur(total_current))
 c2.metric("Total Invested", utils.fmt_eur(total_invested))
 c3.metric("Net Equity", utils.fmt_eur(net_equity))
 c4.metric("Annual Rent", utils.fmt_eur(total_rental))
 c5.metric("Exit Proceeds", utils.fmt_eur(total_exit_proceeds))
-if missing_note:
-    st.markdown(missing_note, unsafe_allow_html=True)
 
 st.divider()
 

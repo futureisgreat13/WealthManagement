@@ -1342,15 +1342,18 @@ def get_year_end_completeness(year: int = None) -> dict:
 
 
 def render_year_end_alert(asset_class: str, year: int = None):
-    """Show a warning banner if the given asset class has missing year-end data."""
+    """Show an expandable warning if the given asset class has missing year-end data."""
     import streamlit as st
     if year is None:
         year = CURRENT_YEAR - 1
     comp = get_year_end_completeness(year)
     ac_missing = [i for i in comp["missing_items"] if i["asset_class"] == asset_class]
     if ac_missing:
-        details = ", ".join(f"{i['name']} ({i['field']})" for i in ac_missing)
-        st.warning(f"⚠️ {year} year-end data missing: {details}")
+        with st.expander(f"⚠️ {len(ac_missing)} items missing {year} year-end data", expanded=False):
+            for i in ac_missing:
+                reason = YEAR_END_REASONS.get(i["field"], "")
+                reason_text = f" — *{reason}*" if reason else ""
+                st.markdown(f"❌ {i['name']}: {i['field']}{reason_text}")
 
 
 def load_assumptions() -> dict:
@@ -2237,7 +2240,7 @@ def get_pe_value_by_year(year: int) -> float:
 
 
 def _get_pe_valuation_items() -> list:
-    """Return PE items relevant for valuations (excludes Real Estate type).
+    """Return PE items relevant for valuations.
 
     Includes: Active, Exited (shown until exit year), Written Off (with value_history).
     Used by both PE tab Valuations grid and compute_pe_timeline.
@@ -2245,8 +2248,6 @@ def _get_pe_valuation_items() -> list:
     pe_items = load_json(DATA_DIR / "private_equity.json", [])
     result = []
     for item in pe_items:
-        if item.get("type") == "Real Estate":
-            continue
         status = item.get("status", "Active")
         if status == "Written Off" and not item.get("value_history"):
             continue

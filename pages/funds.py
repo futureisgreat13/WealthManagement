@@ -8,6 +8,7 @@ import utils
 
 st.title("💰 Funds")
 st.markdown('<style>div[data-testid="stMetric"]{padding:8px 0}div.stDataFrame,div[data-testid="stDataEditor"]{background:#111827;border:1px solid #1e3a5f;border-radius:8px;padding:4px}div[data-testid="stExpander"] summary{padding:4px 0}</style>', unsafe_allow_html=True)
+utils.render_year_end_alert("Funds")
 
 items = utils.load_json(utils.DATA_DIR / "funds.json", [])
 active = [i for i in items if i.get("status") == "Active"]
@@ -18,25 +19,18 @@ total_called = sum(i.get("called_eur", 0) for i in items)
 # Year-end value: use value_history for latest completed year
 latest_yr = str(utils.CURRENT_YEAR - 1)
 total_nav = 0
-missing_items = []
 for f in active:
     vh = f.get("value_history", {})
     val = vh.get(latest_yr, 0)
     if val <= 0:
         val = f.get("current_nav_eur", 0)
-        missing_items.append(f.get("name", "Unknown"))
     total_nav += val
 year_label = f" ({latest_yr} YE)"
-missing_note = ""
-if missing_items:
-    missing_note = f' <span style="color:red">* {len(missing_items)} items without {latest_yr} valuation</span>'
 
 c1, c2, c3 = st.columns(3)
 c1.metric(f"Current NAV{year_label}", utils.fmt_eur(total_nav))
 c2.metric("Total Committed", utils.fmt_eur(total_committed))
 c3.metric("Total Called", utils.fmt_eur(total_called))
-if missing_note:
-    st.markdown(missing_note, unsafe_allow_html=True)
 
 st.divider()
 
@@ -95,10 +89,12 @@ with tab2:
                 yr = cs.get("year", 0)
                 pct = cs.get("planned_pct", 0)
                 actual = cs.get("actual_eur", 0)
+                # Only show planned % for future years (past years use actual EUR)
+                show_pct = pct if yr > utils.CURRENT_YEAR else 0
                 sched_rows.append({
                     "Year": yr,
-                    "Planned %": pct,
-                    "Planned EUR": utils.fmt_eur_short(committed * pct / 100) if committed > 0 else "€0",
+                    "Planned %": show_pct,
+                    "Planned EUR": utils.fmt_eur_short(committed * show_pct / 100) if committed > 0 and show_pct > 0 else "",
                     "Actual EUR": actual,
                 })
 
