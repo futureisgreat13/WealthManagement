@@ -1487,13 +1487,49 @@ def get_funds_total_eur() -> float:
     return sum(i.get("current_nav_eur", 0) for i in items)
 
 
+def compute_business_value_for_year(b: dict, year: int) -> float:
+    """Compute a single business's valuation for a given year.
+
+    Formula: (1 - bankruptcy_risk%) × (max(depreciated_investment, floor_value) + PE × income)
+    Income starts from year_started+1. Returns 0 for years before year_started or closed businesses.
+    """
+    yr_start = b.get("year_started", 2020)
+    if year < yr_start:
+        return 0.0
+    status = b.get("status", "Active")
+    close_yr = b.get("close_year")
+    if status == "Closed" and close_yr and year >= close_yr:
+        return 0.0
+
+    inv = b.get("initial_investment_eur", 0)
+    dep_pct = b.get("depreciation_pct", 0) / 100
+    dep = inv * (1 - dep_pct) ** (year - yr_start)
+    floored = max(dep, b.get("floor_value_eur", 0))
+
+    ih = b.get("income_history", {})
+    expected = b.get("expected_annual_cashflow_eur", 0)
+    actual = ih.get(str(year), 0)
+    if actual > 0:
+        # Conservative: use min(actual, expected) — never value above expected
+        income = min(actual, expected)
+    else:
+        income = expected
+    if year <= yr_start:
+        income = 0  # No income until first full year
+
+    risk = b.get("bankruptcy_risk_pct", 0) / 100
+    return (1 - risk) * (floored + b.get("pe_multiple", 1) * income)
+
+
 def get_business_total_eur() -> float:
     items = load_json(DATA_DIR / "business.json", [])
+    yr = CURRENT_YEAR - 1
     total = 0.0
     for b in items:
         if b.get("status") == "Active":
-            total += b.get("expected_annual_cashflow_eur", 0) * b.get("pe_multiple", 1)
-        # closed businesses: 0
+            vh = b.get("value_history", {})
+            override = vh.get(str(yr), 0)
+            total += override if override > 0 else compute_business_value_for_year(b, yr)
     return total
 
 
@@ -1819,7 +1855,11 @@ def get_funds_calls_by_year() -> dict:
 
 
 def get_business_investments_by_year() -> dict:
-    """Return dict {year_int: total_investment} from business.json year_started."""
+    """Return dict {year_int: total_investment} from business.json year_started.
+
+    Also includes exit sale proceeds (negative investment = cash inflow) when
+    a business is closed with an exit_sale_value_eur.
+    """
     items = load_json(DATA_DIR / "business.json", [])
     inv = {}
     for b in items:
@@ -1827,6 +1867,11 @@ def get_business_investments_by_year() -> dict:
         amt = b.get("initial_investment_eur", 0)
         if yr and amt:
             inv[yr] = inv.get(yr, 0) + amt
+        # Exit sale: negative investment (cash inflow)
+        close_yr = b.get("close_year")
+        sale_val = b.get("exit_sale_value_eur", 0)
+        if close_yr and sale_val > 0:
+            inv[close_yr] = inv.get(close_yr, 0) - sale_val
     return inv
 
 
@@ -2437,40 +2482,26 @@ def compute_liquid_timeline(asset_class: str, years_list: list, scenario: str = 
 def compute_business_timeline(years_list: list, scenario: str = "Base") -> list:
     """Compute Business portfolio value for each year in years_list.
 
+    Uses compute_business_value_for_year() formula with value_history overrides.
     This is THE single source of truth for Business valuations, used by:
-    - Business tab Projection
     - Overview projection
     """
     biz_items = load_json(DATA_DIR / "business.json", [])
-    assumptions = load_assumptions()
-    r_biz = get_return_pct("Business", scenario, assumptions)
     totals = [0.0] * len(years_list)
 
     for b in biz_items:
-        if b.get("status") != "Active":
-            continue
-        val = b.get("expected_annual_cashflow_eur", 0) * b.get("pe_multiple", 1)
-        yr_start = b.get("year_started", 2020)
+        status = b.get("status", "Active")
+        close_yr = b.get("close_year")
         vh = b.get("value_history", {})
 
-        prev_val = 0
         for i, yr in enumerate(years_list):
-            if yr < yr_start:
+            if status == "Closed" and close_yr and yr >= close_yr:
                 continue
             override = vh.get(str(yr))
-            has_override = override is not None and override > 0
-
-            if has_override:
-                v = override
-            elif prev_val == 0:
-                v = vh.get(str(yr), 0)
-                if v <= 0:
-                    v = val
+            if override is not None and override > 0:
+                totals[i] += override
             else:
-                v = prev_val * (1 + r_biz / 100)
-
-            prev_val = v
-            totals[i] += v
+                totals[i] += compute_business_value_for_year(b, yr)
 
     return totals
 
