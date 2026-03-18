@@ -55,11 +55,43 @@ if uploaded_pos and uploaded_tx:
         # Run the import computation
         result = utils.compute_ibkr_import(pos_content, tx_content, import_year)
 
-        # --- Show unclassified symbols ---
+        # --- Show unclassified symbols with inline classification ---
         if result["unclassified"]:
-            st.warning(f"⚠️ **{len(result['unclassified'])} symbols** not in classification database "
-                       f"(defaulting to Public Stock): {', '.join(result['unclassified'])}. "
-                       f"Add them via the Symbol Classifications page if needed.")
+            unclassified = sorted(result["unclassified"])
+            st.error(f"🔴 **{len(unclassified)} unclassified symbol(s)** — classify before importing:")
+            categories = ["Public Stock", "ETF", "REIT", "Bond", "Precious Metal"]
+
+            # Auto-verify each symbol
+            with st.spinner("Verifying symbols online..."):
+                suggestions = {}
+                for sym in unclassified:
+                    suggestions[sym] = utils.verify_symbol_classification(sym)
+
+            classify_cols = st.columns([2, 2, 3, 2])
+            classify_cols[0].markdown("**Symbol**")
+            classify_cols[1].markdown("**Suggested**")
+            classify_cols[2].markdown("**Category**")
+            classify_cols[3].markdown("**Reason**")
+
+            user_classifications = {}
+            for sym in unclassified:
+                sg = suggestions[sym]
+                cols = st.columns([2, 2, 3, 2])
+                cols[0].code(sym)
+                confidence_icon = "🟢" if sg["confidence"] == "high" else "🟡" if sg["confidence"] == "medium" else "🔴"
+                cols[1].markdown(f"{confidence_icon} {sg['suggested']}")
+                default_idx = categories.index(sg["suggested"]) if sg["suggested"] in categories else 0
+                user_classifications[sym] = cols[2].selectbox(
+                    f"Category for {sym}", categories, index=default_idx,
+                    key=f"classify_{sym}", label_visibility="collapsed")
+                cols[3].caption(sg["reason"])
+
+            if st.button("✅ Confirm & Save Classifications", type="primary", key="confirm_classify"):
+                for sym, cat in user_classifications.items():
+                    if cat != "Public Stock":
+                        utils.save_symbol_classification(sym, cat)
+                st.success(f"✅ Saved {sum(1 for c in user_classifications.values() if c != 'Public Stock')} classification(s)")
+                st.rerun()
 
         # --- Positions by Asset Class ---
         st.divider()

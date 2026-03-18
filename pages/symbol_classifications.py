@@ -72,6 +72,36 @@ with col1:
         st.rerun()
 
 st.divider()
+st.subheader("🔍 Auto-Verify")
+st.caption("Check symbols against yfinance to detect potential misclassifications.")
+
+verify_col1, verify_col2 = st.columns([1, 4])
+with verify_col1:
+    verify_count = st.number_input("Symbols to check", min_value=10, max_value=len(classifications), value=min(50, len(classifications)), step=10)
+with verify_col2:
+    if st.button("🔍 Verify Classifications", key="auto_verify"):
+        mismatches = []
+        progress = st.progress(0)
+        items = list(classifications.items())[:verify_count]
+        for i, (sym, current_cat) in enumerate(items):
+            result = utils.verify_symbol_classification(sym)
+            suggested = result["suggested"]
+            # Map Public Stock to no-match (it's the default for unknowns)
+            if suggested != "Public Stock" and suggested != current_cat:
+                mismatches.append({"Symbol": sym, "Current": current_cat,
+                                   "Suggested": suggested, "Confidence": result["confidence"],
+                                   "Reason": result["reason"]})
+            progress.progress((i + 1) / len(items))
+        progress.empty()
+
+        if mismatches:
+            st.warning(f"⚠️ Found {len(mismatches)} potential misclassification(s):")
+            mm_df = pd.DataFrame(mismatches)
+            st.dataframe(mm_df, use_container_width=True, hide_index=True)
+        else:
+            st.success(f"✅ All {len(items)} checked symbols look correct!")
+
+st.divider()
 st.subheader("Quick Add")
 st.caption("Quickly add multiple symbols to a category at once.")
 with st.form("quick_add"):

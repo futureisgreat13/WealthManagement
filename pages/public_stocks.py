@@ -12,6 +12,35 @@ utils.render_year_end_alert("Equity")
 positions = utils.load_json(utils.DATA_DIR / "public_stocks.json", [])
 stocks = [p for p in positions if p.get("type") in ("Equity", "ETF")]
 
+# --- Unclassified symbol detection ---
+classifications = utils.load_symbol_classifications()
+unclassified_syms = []
+for p in stocks:
+    sym = p.get("ticker", "")
+    if sym and utils.classify_symbol(sym, classifications) == "Public Stock" and sym not in classifications:
+        unclassified_syms.append(sym)
+
+if unclassified_syms:
+    with st.expander(f"🔴 **{len(unclassified_syms)} unclassified symbol(s)** — click to classify", expanded=True):
+        categories = ["Public Stock", "ETF", "REIT", "Bond", "Precious Metal"]
+        user_cls = {}
+        for sym in sorted(set(unclassified_syms)):
+            cols = st.columns([2, 2, 3])
+            cols[0].code(sym)
+            sg = utils.verify_symbol_classification(sym)
+            confidence_icon = "🟢" if sg["confidence"] == "high" else "🟡" if sg["confidence"] == "medium" else "🔴"
+            cols[1].markdown(f"{confidence_icon} Suggested: **{sg['suggested']}**")
+            default_idx = categories.index(sg["suggested"]) if sg["suggested"] in categories else 0
+            user_cls[sym] = cols[2].selectbox(
+                f"Cat {sym}", categories, index=default_idx,
+                key=f"eq_classify_{sym}", label_visibility="collapsed")
+        if st.button("✅ Save Classifications", type="primary", key="eq_save_classify"):
+            for sym, cat in user_cls.items():
+                if cat != "Public Stock":
+                    utils.save_symbol_classification(sym, cat)
+            st.success(f"✅ Saved! Positions will be reclassified on next IBKR import.")
+            st.rerun()
+
 # --- Metrics: show latest IBKR year-end data if available ---
 avh = utils.load_json(utils.DATA_DIR / "asset_value_history.json", {})
 equity_hist = avh.get("Equity", {})

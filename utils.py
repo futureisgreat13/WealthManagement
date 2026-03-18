@@ -3235,6 +3235,66 @@ def load_symbol_classifications() -> dict:
     return load_json(DATA_DIR / "symbol_classifications.json", {})
 
 
+def save_symbol_classification(symbol: str, category: str):
+    """Save a single symbol classification to the shared database."""
+    path = DATA_DIR / "symbol_classifications.json"
+    data = load_json(path, {})
+    data[symbol] = category
+    data = dict(sorted(data.items()))
+    save_json(path, data)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def verify_symbol_classification(symbol: str) -> dict:
+    """Use yfinance to auto-detect a symbol's likely classification.
+    Returns {"suggested": str, "confidence": str, "reason": str}.
+    """
+    try:
+        import yfinance as yf
+        ticker = yf.Ticker(symbol)
+        info = ticker.info or {}
+    except Exception:
+        return {"suggested": "Public Stock", "confidence": "low", "reason": "Failed to fetch data"}
+
+    quote_type = info.get("quoteType", "").upper()
+    long_name = (info.get("longName") or info.get("shortName") or "").lower()
+    category = (info.get("category") or "").lower()
+    sector = (info.get("sector") or "").lower()
+    industry = (info.get("industry") or "").lower()
+    combined = f"{long_name} {category} {sector} {industry}"
+
+    # REITs - check quoteType first
+    if quote_type == "REIT" or "reit" in quote_type:
+        return {"suggested": "REIT", "confidence": "high", "reason": f"quoteType={quote_type}"}
+
+    if quote_type == "ETF":
+        # Bond ETFs
+        bond_kw = ["bond", "treasury", "fixed income", "aggregate bond", "debt", "income fund",
+                    "govt", "government bond", "corporate bond", "high yield", "municipal", "tips"]
+        if any(kw in combined for kw in bond_kw):
+            return {"suggested": "Bond", "confidence": "high", "reason": f"ETF, name/category contains bond keywords"}
+        # REIT ETFs
+        reit_kw = ["real estate", "reit", "property", "mortgage"]
+        if any(kw in combined for kw in reit_kw):
+            return {"suggested": "REIT", "confidence": "high", "reason": f"ETF, name/category contains real estate keywords"}
+        # Precious Metal ETFs (specific metals only, NOT generic mining)
+        pm_kw = ["gold", "silver", "platinum", "palladium", "precious metal", "bullion"]
+        if any(kw in combined for kw in pm_kw):
+            return {"suggested": "Precious Metal", "confidence": "high", "reason": f"ETF, name/category contains precious metal keywords"}
+        # Generic equity ETF
+        return {"suggested": "ETF", "confidence": "high", "reason": f"quoteType=ETF"}
+
+    if quote_type == "EQUITY":
+        # REIT stocks
+        if "reit" in industry or "real estate" in industry:
+            return {"suggested": "REIT", "confidence": "high", "reason": f"EQUITY, industry={industry}"}
+        # Regular equity
+        return {"suggested": "Public Stock", "confidence": "medium", "reason": f"EQUITY, sector={sector}"}
+
+    # Fallback
+    return {"suggested": "Public Stock", "confidence": "low", "reason": f"quoteType={quote_type or 'unknown'}"}
+
+
 def classify_symbol(symbol: str, classifications: dict) -> str:
     """Classify a symbol into an asset class using the classification database.
     Returns one of: ETF, REIT, Precious Metal, Bond, Public Stock.
