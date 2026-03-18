@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -40,7 +39,7 @@ c5.metric("Avg Yield", f"{div_yield:.1f}%")
 
 st.divider()
 
-tab1, tab2, tab3 = st.tabs(["Positions", "Valuations", "Edit"])
+tab1, tab2 = st.tabs(["Positions", "Valuations"])
 
 with tab1:
     if not reits:
@@ -186,43 +185,3 @@ with tab2:
                       title=f"REITs Valuation ({scenario})")
     st.plotly_chart(fig, use_container_width=True)
 
-with tab3:
-    st.subheader("Edit REIT Positions")
-    edit_rows = [{
-        "ticker": p.get("ticker", ""), "name": p.get("name", ""),
-        "currency": p.get("currency", "USD"), "quantity": p.get("quantity", 0),
-        "cost_eur": p.get("cost_eur", 0), "value_eur": p.get("value_eur", 0),
-        "net_div_eur": p.get("net_div_eur", 0),
-    } for p in reits]
-
-    edit_df = pd.DataFrame(edit_rows) if edit_rows else pd.DataFrame(
-        columns=["ticker", "name", "currency", "quantity", "cost_eur", "value_eur", "net_div_eur"])
-
-    st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable — supports math (e.g. =500*2, 1000/EURUSD)</p>', unsafe_allow_html=True)
-    edited = st.data_editor(edit_df, use_container_width=True, hide_index=True, num_rows="dynamic",
-        column_config={
-            "currency": st.column_config.SelectboxColumn("Currency", options=utils.CURRENCIES),
-            "cost_eur": st.column_config.NumberColumn("Cost (EUR)", format="€%.0f"),
-            "value_eur": st.column_config.NumberColumn("Value (EUR)", format="€%.0f"),
-            "net_div_eur": st.column_config.NumberColumn("Div/yr (EUR)", format="€%.0f"),
-        })
-    edited = utils.process_math_in_df(edited, ["quantity", "cost_eur", "value_eur", "net_div_eur"], editor_key="reits_holdings")
-
-    if st.button("💾 Save REITs", type="primary", key="reits_save"):
-        others = [p for p in positions if p.get("type") != "REIT"]
-        new_reits = []
-        for _, row in edited.iterrows():
-            if row.get("ticker"):
-                new_reits.append({
-                    "id": utils.new_id(), "ticker": row["ticker"], "name": row.get("name", ""),
-                    "type": "REIT", "currency": row.get("currency", "USD"),
-                    "quantity": float(row.get("quantity", 0) or 0),
-                    "cost_eur": float(row.get("cost_eur", 0) or 0),
-                    "value_eur": float(row.get("value_eur", 0) or 0),
-                    "cost_local": 0, "value_local": 0,
-                    "net_div_eur": float(row.get("net_div_eur", 0) or 0),
-                    "return_pct": 0, "last_updated": datetime.now().strftime("%Y-%m-%d"),
-                })
-        utils.save_json(utils.DATA_DIR / "public_stocks.json", others + new_reits)
-        st.success("Saved!")
-        st.rerun()

@@ -6,7 +6,7 @@ import os
 import requests
 from pathlib import Path
 from datetime import datetime, timedelta
-from utils import setup_user_data_dir, auto_refresh_fx_rates, auto_refresh_stock_prices
+from utils import setup_user_data_dir, auto_refresh_fx_rates, auto_refresh_stock_prices, get_live_market_data
 
 st.set_page_config(
     page_title="Wealth Dashboard",
@@ -229,25 +229,116 @@ if profile_path.exists():
 
 # ── First-login onboarding ─────────────────────────────────────────
 if not profile.get("onboarding_complete"):
-    st.markdown(f"# Welcome, {user_name or user_email}! 👋")
-    st.markdown("### Your personal Wealth Dashboard is ready.")
+    st.markdown(
+        f'<h1 style="text-align:center;margin-top:1em">Welcome, {user_name or user_email}! 👋</h1>'
+        '<p style="text-align:center;color:#888;font-size:1.1em">'
+        'Your personal Wealth Dashboard is ready. Here\'s everything you need to know.</p>',
+        unsafe_allow_html=True,
+    )
+    st.divider()
+
+    # ── What is this app? ──
+    st.markdown("## 💎 What is this app?")
     st.markdown("""
-This dashboard helps you track and project your investments across multiple asset classes
-with scenario analysis, cash flow management, and investment planning.
+A **personal wealth management dashboard** that gives you a complete picture of your finances in one place.
+Track every asset you own, see how your net worth changes over time, and plan for the future with
+scenario-based projections. Think of it as your own Bloomberg terminal — but simpler and built for you.
 
-**Here's how to get started:**
-
-1. **FX & Settings** — Set your currency exchange rates (all values are normalized to EUR)
-2. **Add your assets** — Use the sidebar to navigate to each asset class:
-   - **Liquid**: Equity, REITs, Bonds, Precious Metals
-   - **Illiquid**: Real Estate, Private Equity, Funds, Business, Debt
-3. **Cash Flow** — Track income and expenses
-4. **Overview** — See your full portfolio summary and projections
-5. **IBKR Import** — Import positions from Interactive Brokers (optional)
-
-Each page has editable tables — yellow cells are for your input, white cells are calculated.
+**Everything is in EUR.** All values from other currencies are automatically converted using live exchange rates.
 """)
-    if st.button("Get Started", type="primary", use_container_width=True):
+    st.divider()
+
+    # ── Your Asset Classes ──
+    st.markdown("## 📊 What can you track?")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("""
+**Liquid Assets** *(easy to sell)*
+- **Equity** — Public stocks & ETFs
+- **REITs** — Real estate investment trusts
+- **Bonds** — Fixed income
+- **Precious Metals** — Gold, silver, etc.
+- **Cash** — Bank accounts & savings
+""")
+    with col2:
+        st.markdown("""
+**Illiquid Assets** *(harder to sell)*
+- **Real Estate** — Properties you own
+- **Private Equity** — PE fund investments
+- **Funds** — VC / growth funds
+- **Business** — Business ownership stakes
+- **Debt** — Loans & mortgages (tracked as negative)
+""")
+    st.divider()
+
+    # ── How it works ──
+    st.markdown("## 🔧 How does it work?")
+    st.markdown("""
+**1. Enter your assets**
+Use the sidebar to navigate to each asset class. Add your positions — name, amount invested, current value.
+Tables are editable: just click a cell and type. You can use math expressions like `=500*2` or `=1000/EURUSD`.
+
+**2. Understand the colors**
+- 🟡 **Yellow cells** = values YOU entered (manual input)
+- 🔵 **Blue cells** = imported from Interactive Brokers
+- ⚪ **White cells** = calculated automatically by formulas
+
+**3. Year-end updates**
+At the end of each year, update your actual asset values. The app will remind you what's missing.
+Go to **Year-End Checklist** in the sidebar to see what still needs updating.
+
+**4. See your portfolio**
+The **Overview** page shows your total net worth, asset allocation, and multi-year projections
+under different scenarios (Bull, Base, Bear, Super Bear).
+
+**5. Projections & Planning**
+Future values are projected using growth rates and scenario multipliers.
+Use **Investment Plan** to set target allocations and planned annual investments per asset class.
+""")
+    st.divider()
+
+    # ── Scenarios ──
+    st.markdown("## 📈 Scenarios")
+    st.markdown("""
+The app projects your portfolio under **4 scenarios** to help you plan for different market conditions:
+
+| Scenario | What it means |
+|----------|---------------|
+| **Bull** | Markets do better than expected |
+| **Base** | Most likely outcome |
+| **Bear** | Markets underperform |
+| **Super Bear** | Severe downturn |
+
+Each asset class has its own scenario multipliers (e.g. equity growth rates, real estate appreciation, PE IRR).
+You can customize these in the settings.
+""")
+    st.divider()
+
+    # ── Cash Flow ──
+    st.markdown("## 💰 Cash Flow")
+    st.markdown("""
+Track where your money comes from and where it goes:
+- **Income**: Salary, dividends, rental income, business distributions
+- **Expenses**: Living costs, debt payments, new investments
+
+The **Cash Flow** page shows your annual net cash flow and helps you understand
+how much free capital you have for new investments each year.
+""")
+    st.divider()
+
+    # ── Quick tips ──
+    st.markdown("## ⚡ Quick tips")
+    st.markdown("""
+- **FX rates update automatically** — live rates are fetched when you open the app
+- **Math in cells** — type `=100000*1.05` or `=500/EURUSD` in any editable cell
+- **Delete rows** — hover over a row in an editable table, click the minus icon, then save
+- **Import from IBKR** — upload your Interactive Brokers CSV to auto-populate stock positions
+- **All data is private** — each user has their own isolated data, nobody else can see yours
+""")
+
+    st.divider()
+    st.markdown("")
+    if st.button("🚀 Get Started", type="primary", use_container_width=True):
         profile["onboarding_complete"] = True
         with open(profile_path, "w") as f:
             json.dump(profile, f, indent=2)
@@ -268,5 +359,6 @@ with st.sidebar:
 # Auto-refresh market data (runs on every app load, throttled to 15 min)
 auto_refresh_fx_rates()
 auto_refresh_stock_prices()
+get_live_market_data()  # warm cache for market prices (indices, commodities, crypto)
 
 nav.run()

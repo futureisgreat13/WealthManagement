@@ -39,7 +39,9 @@
       "Bash(find pages:*)",
       "Bash(python -c \"import utils; print\\(''utils imported OK''\\)\")",
       "Bash(timeout 10 streamlit run app.py --server.headless true)",
-      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\({k:{y:v for y,v in sv.items\\(\\) if ''''2024'''' in y} for k,sv in d.items\\(\\) if any\\(''''2024'''' in y for y in sv\\)}, indent=2\\)\\)\")"
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\({k:{y:v for y,v in sv.items\\(\\) if ''''2024'''' in y} for k,sv in d.items\\(\\) if any\\(''''2024'''' in y for y in sv\\)}, indent=2\\)\\)\")",
+      "WebFetch(domain:stockanalysis.com)",
+      "WebFetch(domain:etfdb.com)"
     ]
   }
 }

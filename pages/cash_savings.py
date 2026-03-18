@@ -72,6 +72,16 @@ with tab2:
     edited = utils.process_math_in_df(edited, ["amount", "interest_rate_pct"], editor_key="cash_savings_accounts")
 
     if st.button("💾 Save", type="primary", key="cash_save"):
+        deleted = utils.check_deleted_items(items, edited, name_col="name")
+        if not deleted:
+            st.session_state["_pending_save_cash_positions"] = True
+        else:
+            st.session_state["_delete_confirm_cash_positions"] = deleted
+        st.rerun()
+
+    # Handle pending save / delete confirmation (outside button block for Streamlit rerun compatibility)
+    save_result = utils.handle_save_with_delete_confirmation("cash_positions", [])
+    if save_result == "save":
         new_items = []
         for j, (_, row) in enumerate(edited.iterrows()):
             if row.get("name"):
@@ -86,4 +96,6 @@ with tab2:
                 })
         utils.save_json(utils.DATA_DIR / "cash.json", new_items)
         st.success("Saved!")
+        st.rerun()
+    elif save_result == "cancelled":
         st.rerun()

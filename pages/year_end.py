@@ -8,7 +8,10 @@ st.title("Year-End Checklist")
 st.caption("Track year-end data completeness across all asset classes. "
            "Missing data affects net worth accuracy, cash flow calculations, and projection anchoring.")
 
-check_years = [utils.CURRENT_YEAR - 2, utils.CURRENT_YEAR - 1, utils.CURRENT_YEAR]
+# Start from the user's first investment year (or CURRENT_YEAR - 2 if no data)
+base_year = utils.get_base_year()
+first_year = base_year if base_year else utils.CURRENT_YEAR - 1
+check_years = list(range(first_year, utils.CURRENT_YEAR + 1))
 
 for yr in check_years:
     comp = utils.get_year_end_completeness(yr)

@@ -49,11 +49,11 @@ c2.metric("Annual Coupon Income", utils.fmt_eur(annual_income))
 c3.metric("Total Cost", utils.fmt_eur(total_cost))
 
 # --- Tabs ---
-tab1, tab2, tab3 = st.tabs(["Positions", "Valuations", "Edit"])
+tab1, tab2 = st.tabs(["Positions", "Valuations"])
 
 with tab1:
     if not items:
-        st.info("No bonds yet. Add them in the Edit tab or import via IB CSV.")
+        st.info("No bonds yet. Import via IB CSV.")
     else:
         rows = []
         for b in items:
@@ -204,41 +204,3 @@ with tab2:
                       title=f"Bonds Valuation ({scenario})")
     st.plotly_chart(fig, use_container_width=True)
 
-with tab3:
-    st.subheader("Edit Bonds")
-    edit_rows = [{
-        "name": b.get("name", ""), "currency": b.get("currency", "EUR"),
-        "face_value": b.get("face_value", 0), "purchase_price": b.get("purchase_price", 0),
-        "coupon_rate_pct": b.get("coupon_rate_pct", 0),
-        "maturity_date": b.get("maturity_date", ""), "current_value_eur": b.get("current_value_eur", 0),
-    } for b in items]
-
-    edit_df = pd.DataFrame(edit_rows) if edit_rows else pd.DataFrame(
-        columns=["name", "currency", "face_value", "purchase_price", "coupon_rate_pct", "maturity_date", "current_value_eur"])
-    st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable — supports math (e.g. =500*2, 1000/EURUSD)</p>', unsafe_allow_html=True)
-    edited = st.data_editor(edit_df, use_container_width=True, hide_index=True, num_rows="dynamic",
-        column_config={
-            "currency": st.column_config.SelectboxColumn("Currency", options=utils.CURRENCIES),
-            "face_value": st.column_config.NumberColumn(format="€%.0f"),
-            "purchase_price": st.column_config.NumberColumn(format="€%.0f"),
-            "current_value_eur": st.column_config.NumberColumn(format="€%.0f"),
-        })
-    edited = utils.process_math_in_df(edited, ["face_value", "purchase_price", "coupon_rate_pct", "current_value_eur"], editor_key="bonds_holdings")
-
-    if st.button("💾 Save Bonds", type="primary", key="bonds_save"):
-        new_items = []
-        for j, (_, row) in enumerate(edited.iterrows()):
-            if row.get("name"):
-                orig = items[j] if j < len(items) else {}
-                new_items.append({
-                    "id": orig.get("id", utils.new_id()),
-                    "name": row["name"], "currency": row.get("currency", "EUR"),
-                    "face_value": float(row.get("face_value", 0) or 0),
-                    "purchase_price": float(row.get("purchase_price", 0) or 0),
-                    "coupon_rate_pct": float(row.get("coupon_rate_pct", 0) or 0),
-                    "maturity_date": str(row.get("maturity_date", "") or ""),
-                    "current_value_eur": float(row.get("current_value_eur", 0) or 0),
-                })
-        utils.save_json(utils.DATA_DIR / "bonds.json", new_items)
-        st.success("Saved!")
-        st.rerun()

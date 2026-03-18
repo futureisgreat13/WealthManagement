@@ -101,6 +101,11 @@ with tab1:
     }
     plan_df = pd.concat([plan_df, pd.DataFrame([total_row_data])], ignore_index=True)
 
+    # Convert editable columns to string for TextColumn compatibility
+    for col in ["Target %", "Div Yield %", "Default Invest/yr"]:
+        if col in plan_df.columns:
+            plan_df[col] = plan_df[col].astype(str)
+
     st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable: Target %, Div Yield %, Default Invest/yr</p>', unsafe_allow_html=True)
     st.caption("💡 Supports math expressions (e.g. 500*2) and FX shortcuts (e.g. 1000/EURUSD)")
     edited_plan = st.data_editor(

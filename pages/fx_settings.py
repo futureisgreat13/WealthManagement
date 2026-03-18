@@ -17,29 +17,6 @@ if _last_fx:
 fx = utils.load_fx_rates()
 pairs = ["EURUSD", "EURINR", "EURGBP", "EURHKD", "EURJPY", "EURCAD", "EURAUD", "EURCHF"]
 
-# Apply live rates to widget keys if just fetched
-if "_fx_live_rates" in st.session_state:
-    for pair in pairs:
-        if pair in st.session_state["_fx_live_rates"]:
-            st.session_state[f"fx_{pair}"] = float(st.session_state["_fx_live_rates"][pair])
-    del st.session_state["_fx_live_rates"]
-
-# Live FX fetch
-fcol1, fcol2 = st.columns([1, 3])
-with fcol1:
-    if st.button("🔄 Fetch Live Rates", type="secondary"):
-        live = utils.fetch_live_fx_rates()
-        if live:
-            st.session_state["_fx_live_rates"] = live
-            st.session_state["_fx_live_fetched"] = True
-            st.rerun()
-        else:
-            st.error("Failed to fetch live rates. Check internet connection.")
-with fcol2:
-    if st.session_state.get("_fx_live_fetched"):
-        st.success("✅ Live rates loaded — review & save below")
-        st.session_state["_fx_live_fetched"] = False
-
 cols = st.columns(4)
 new_fx = {}
 for i, pair in enumerate(pairs):
@@ -77,6 +54,10 @@ for ac in LIQUID_SCENARIO_ACS:
     })
 
 liquid_df = pd.DataFrame(liquid_rows)
+liquid_numeric = ["Super Bear %", "Bear %", "Base %", "Bull %"]
+for col in liquid_numeric:
+    if col in liquid_df.columns:
+        liquid_df[col] = liquid_df[col].astype(str)
 st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable — enter scenario return rates</p>', unsafe_allow_html=True)
 edited_liquid = st.data_editor(liquid_df, use_container_width=True, hide_index=True, key="liquid_assumptions_editor",
     column_config={
@@ -141,6 +122,10 @@ for s in utils.SCENARIOS:
     irr_rows.append(row)
 
 irr_df = pd.DataFrame(irr_rows)
+irr_numeric_cols = ["PE IRR ×", "PE Prob ×", "RE IRR ×", "RE Prob ×"] + [f"{ac} Override %" for ac in IRR_BASED_ACS]
+for col in irr_numeric_cols:
+    if col in irr_df.columns:
+        irr_df[col] = irr_df[col].astype(str)
 st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable — multipliers + optional fixed % overrides (leave empty to use multipliers)</p>', unsafe_allow_html=True)
 col_config = {
     "PE IRR ×": st.column_config.TextColumn("PE IRR ×"),
@@ -151,7 +136,6 @@ col_config = {
 for ac in IRR_BASED_ACS:
     col_config[f"{ac} Override %"] = st.column_config.TextColumn(f"{ac} Override %")
 
-irr_numeric_cols = ["PE IRR ×", "PE Prob ×", "RE IRR ×", "RE Prob ×"] + [f"{ac} Override %" for ac in IRR_BASED_ACS]
 edited_irr = st.data_editor(irr_df, use_container_width=True, hide_index=True,
     column_config=col_config,
     disabled=["Scenario"], key="irr_mult_editor")
@@ -224,6 +208,9 @@ for ac in div_classes:
 
 div_df = pd.DataFrame(div_rows)
 div_numeric_cols = [str(yr) for yr in div_years]
+for col in div_numeric_cols:
+    if col in div_df.columns:
+        div_df[col] = div_df[col].astype(str)
 st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable — enter your values below</p>', unsafe_allow_html=True)
 st.caption("💡 Supports math expressions (e.g. 500*2) and FX shortcuts (e.g. 1000/EURUSD)")
 edited_divs = st.data_editor(div_df, use_container_width=True, hide_index=True,
@@ -244,3 +231,27 @@ if st.button("💾 Save Dividend History", type="primary", key="save_div_history
     div_config["actual_dividends"] = new_actual
     utils.save_json(utils.DATA_DIR / "dividend_config.json", div_config)
     st.success("Dividend history saved!")
+
+st.divider()
+
+# --- Live Market Prices ---
+st.subheader("Live Market Prices")
+market = utils.get_live_market_data()
+if market.get("last_updated"):
+    st.caption(f"Auto-updated every 15 min. Last refresh: {market['last_updated']}")
+if market.get("prices"):
+    price_rows = []
+    fx_rates = utils.load_fx_rates()
+    for name, info in market["prices"].items():
+        price_eur = utils.to_eur(info["price"], info["currency"], fx_rates)
+        price_rows.append({
+            "Asset": name,
+            "Price": f'{info["price"]:,.2f}',
+            "Currency": info["currency"],
+            "Price (EUR)": utils.fmt_eur(price_eur),
+        })
+    if price_rows:
+        utils.render_aggrid_table(pd.DataFrame(price_rows), key="aggrid_market_prices",
+                                  height=min(400, len(price_rows) * 32 + 60))
+else:
+    st.info("Market prices unavailable. Check internet connection.")

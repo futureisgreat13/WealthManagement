@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
+import math
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -95,7 +96,7 @@ def _build_grid(years_list):
                 val = ac_proj[idx] if idx < len(ac_proj) else 0
             else:
                 val = hist_by_asset.get(yr_str, {}).get(ac, 0)
-            row[yr_str] = round(val) if val != 0 else 0
+            row[yr_str] = round(val) if val and not (isinstance(val, float) and math.isnan(val)) else 0
         rows.append(row)
     t_row = {"Asset Class": "TOTAL"}
     for yr in years_list:
@@ -104,9 +105,11 @@ def _build_grid(years_list):
             t_row[yr_str] = round(sum(hist_by_asset[yr_str].values()))
         elif yr in proj_data["years"]:
             idx = proj_data["years"].index(yr)
-            t_row[yr_str] = round(proj_data["total"][idx])
+            total_val = proj_data["total"][idx]
+            t_row[yr_str] = round(total_val) if total_val and not (isinstance(total_val, float) and math.isnan(total_val)) else 0
         else:
-            t_row[yr_str] = round(sum(hist_by_asset.get(yr_str, {}).values()))
+            hist_sum = sum(v for v in hist_by_asset.get(yr_str, {}).values() if v and not (isinstance(v, float) and math.isnan(v)))
+            t_row[yr_str] = round(hist_sum)
     rows.append(t_row)
     return rows, t_row
 
@@ -116,6 +119,7 @@ year_str_cols = [str(yr) for yr in show_years]
 
 # Allocation deviation coloring
 inv_plan = utils.load_json(utils.DATA_DIR / "investment_plan.json", {})
+if not isinstance(inv_plan, dict): inv_plan = {}
 target_alloc = inv_plan.get("target_allocation", {})
 bg_style_map = {}
 for yr in show_years:
@@ -162,7 +166,9 @@ st.markdown(f'<h2>Projection ({scenario})</h2>', unsafe_allow_html=True)
 # Compact: show key milestones inline + small chart
 def _proj_val(proj, yr):
     if yr in proj["years"]:
-        return proj["total"][proj["years"].index(yr)]
+        v = proj["total"][proj["years"].index(yr)]
+        if v and not (isinstance(v, float) and math.isnan(v)):
+            return v
     return 0
 
 p_now = _proj_val(proj_data, utils.CURRENT_YEAR)

@@ -250,6 +250,18 @@ def _eur_formatter_js():
     """)
 
 
+def _pct_formatter_js():
+    """JS valueFormatter that formats numbers as percentages (e.g. 12.2%)."""
+    return JsCode("""
+        function(params) {
+            if (params.value == null || params.value === '' || isNaN(params.value)) return params.value || '';
+            var v = Number(params.value);
+            if (v === 0) return '\u2014';
+            return v.toFixed(1) + '%';
+        }
+    """)
+
+
 def render_aggrid_table(df, key: str, height: int = 400, cell_style_map: dict = None,
                         numeric_cols: list = None, highlight_total_row: bool = False,
                         bg_style_map: dict = None, formula_map: dict = None, **kwargs):
@@ -459,6 +471,7 @@ def render_editable_aggrid_table(df, key: str, height: int = 400,
                                  bg_style_map: dict = None,
                                  formula_map: dict = None,
                                  editor_key: str = None,
+                                 formatter_js=None,
                                  **kwargs):
     """Render an editable DataFrame using AG-Grid.
 
@@ -547,7 +560,7 @@ def render_editable_aggrid_table(df, key: str, height: int = 400,
         }}""")
 
     # --- Configure columns ---
-    eur_fmt = _eur_formatter_js()
+    eur_fmt = formatter_js if formatter_js else _eur_formatter_js()
 
     for col in df.columns:
         col_config = {}
@@ -556,6 +569,9 @@ def render_editable_aggrid_table(df, key: str, height: int = 400,
 
         if is_editable:
             col_config["editable"] = True
+            col_config["suppressMenu"] = True
+            col_config["suppressHeaderMenuButton"] = True
+            col_config["sortable"] = False
 
         if is_numeric:
             col_config["valueFormatter"] = eur_fmt
@@ -624,6 +640,8 @@ def render_editable_aggrid_table(df, key: str, height: int = 400,
 
     grid_opts = {
         "enableRangeSelection": True,
+        "enableFillHandle": True,
+        "fillHandleDirection": "xy",
         "tooltipShowDelay": 300,
         "statusBar": {
             "statusPanels": [
@@ -736,9 +754,96 @@ def render_editable_aggrid_table(df, key: str, height: int = 400,
         update_mode=GridUpdateMode.VALUE_CHANGED,
         enable_enterprise_modules=True,
         allow_unsafe_jscode=True,
+        reload_data=False,
         key=key,
         **kwargs,
     )
+
+
+def track_unsaved_changes(editor_key: str, original_df, edited_df):
+    """Track whether a table has unsaved changes. Call after each editor render."""
+    import pandas as pd
+    try:
+        changed = not original_df.astype(str).reset_index(drop=True).equals(
+            edited_df.astype(str).reset_index(drop=True)
+        )
+    except Exception:
+        changed = False
+    unsaved = st.session_state.setdefault("_unsaved_editors", set())
+    if changed:
+        unsaved.add(editor_key)
+    else:
+        unsaved.discard(editor_key)
+
+
+def show_unsaved_warning():
+    """Show warning if any editor has unsaved changes. Call at top of page."""
+    unsaved = st.session_state.get("_unsaved_editors", set())
+    if unsaved:
+        st.warning("⚠️ You have unsaved changes. Save before switching tabs or pages.")
+
+
+def clear_unsaved(editor_key: str):
+    """Clear unsaved state after successful save."""
+    st.session_state.setdefault("_unsaved_editors", set()).discard(editor_key)
+
+
+def check_deleted_items(original_items: list, edited_df, name_col: str = "name") -> list:
+    """Compare original items with edited DataFrame to find deleted item names.
+    Returns list of deleted names."""
+    original_names = {i.get(name_col, "") for i in original_items if i.get(name_col)}
+    edited_names = set()
+    if not edited_df.empty and name_col in edited_df.columns:
+        edited_names = {str(n) for n in edited_df[name_col] if n and str(n).strip()}
+    return sorted(original_names - edited_names)
+
+
+def handle_save_with_delete_confirmation(key: str, deleted_names: list) -> str:
+    """Handle save with delete confirmation flow.
+    Returns: 'save' if ok to save, 'confirm_needed' if waiting for confirmation, 'cancelled' if user cancelled.
+
+    Usage pattern — must be called OUTSIDE the save button block:
+        # At top of save section:
+        pending_key = f"_pending_save_{key}"
+        confirm_key = f"_delete_confirm_{key}"
+
+        if st.button("Save"):
+            deleted = check_deleted_items(items, edited, "name")
+            if not deleted:
+                st.session_state[pending_key] = True  # no deletions, go ahead
+            else:
+                st.session_state[confirm_key] = deleted  # needs confirmation
+            st.rerun()
+
+        # Outside button block — handle pending states:
+        result = handle_save_with_delete_confirmation(key, ...)
+        if result == "save": ... do save ...
+    """
+    pending_key = f"_pending_save_{key}"
+    confirm_key = f"_delete_confirm_{key}"
+
+    # Case 1: Save was clicked with no deletions — proceed
+    if st.session_state.get(pending_key):
+        st.session_state.pop(pending_key, None)
+        st.session_state.pop(confirm_key, None)
+        return "save"
+
+    # Case 2: No pending confirmation
+    if confirm_key not in st.session_state:
+        return "none"
+
+    # Case 3: Confirmation needed — show warning and buttons
+    names = st.session_state[confirm_key]
+    st.warning(f"⚠️ The following items will be deleted: **{', '.join(names)}**")
+    c1, c2 = st.columns(2)
+    if c1.button("✅ Confirm Delete & Save", key=f"btn_confirm_{key}", type="primary"):
+        st.session_state.pop(confirm_key, None)
+        st.session_state[pending_key] = True
+        st.rerun()
+    if c2.button("❌ Cancel", key=f"btn_cancel_{key}"):
+        st.session_state.pop(confirm_key, None)
+        st.rerun()
+    return "confirm_needed"
 
 
 def build_valuation_style_maps(col_source_map):
@@ -790,6 +895,23 @@ BENCHMARK_TICKERS = {
     "Gold":          {"ticker": "GC=F",      "currency": "USD"},
     "MSCI World":    {"ticker": "URTH",      "currency": "USD"},
     "Euro Stoxx 50": {"ticker": "^STOXX50E", "currency": "EUR"},
+}
+
+MARKET_TICKERS = {
+    # Indices
+    "S&P 500":       {"ticker": "^GSPC",     "currency": "USD"},
+    "Nasdaq":        {"ticker": "^IXIC",     "currency": "USD"},
+    "MSCI World":    {"ticker": "URTH",      "currency": "USD"},
+    "Euro Stoxx 50": {"ticker": "^STOXX50E", "currency": "EUR"},
+    "FTSE 100":      {"ticker": "^FTSE",     "currency": "GBP"},
+    "DAX":           {"ticker": "^GDAXI",    "currency": "EUR"},
+    "Nikkei 225":    {"ticker": "^N225",     "currency": "JPY"},
+    "Sensex":        {"ticker": "^BSESN",    "currency": "INR"},
+    # Commodities
+    "Gold":          {"ticker": "GC=F",      "currency": "USD"},
+    "Silver":        {"ticker": "SI=F",      "currency": "USD"},
+    # Crypto
+    "Bitcoin":       {"ticker": "BTC-USD",   "currency": "USD"},
 }
 
 FX_TICKER_MAP = {
@@ -964,6 +1086,41 @@ def fetch_benchmark_yearly(ticker: str, currency: str = "USD", start_year: int =
         return {}
 
 
+@st.cache_data(ttl=900)
+def get_live_market_data() -> dict:
+    """Fetch FX rates + market prices (indices, commodities, crypto) in one call.
+    Cached for 15 minutes. Returns {"fx": {...}, "prices": {...}, "last_updated": str}."""
+    from datetime import datetime
+    fx = fetch_live_fx_rates()
+    prices = {}
+    try:
+        import yfinance as yf
+        tickers = list(set(v["ticker"] for v in MARKET_TICKERS.values()))
+        data = yf.download(tickers, period="1d", progress=False, threads=True)
+        if not data.empty:
+            for name, info in MARKET_TICKERS.items():
+                try:
+                    t = info["ticker"]
+                    if len(tickers) == 1:
+                        price = float(data["Close"].iloc[-1])
+                    else:
+                        price = float(data["Close"][t].iloc[-1])
+                    if price > 0:
+                        prices[name] = {
+                            "price": round(price, 2),
+                            "currency": info["currency"],
+                        }
+                except (KeyError, IndexError, TypeError):
+                    continue
+    except Exception:
+        pass
+    return {
+        "fx": fx,
+        "prices": prices,
+        "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M"),
+    }
+
+
 def to_eur(value: float, currency: str, fx_rates: dict) -> float:
     if currency == "EUR":
         return value
@@ -1055,6 +1212,9 @@ def auto_refresh_stock_prices():
     st.session_state["_stocks_last_refresh"] = now
 
 
+# Files shared across all users (not remapped to user directory)
+SHARED_FILES = {"symbol_classifications.json", "fx_rates.json", "assumptions.json"}
+
 def _get_effective_path(path: Path) -> Path:
     """Remap a DATA_DIR path to the logged-in user's isolated directory."""
     user_dir = st.session_state.get("user_data_dir")
@@ -1067,6 +1227,9 @@ def _get_effective_path(path: Path) -> Path:
     # Don't remap paths already inside users/ or _template/ or _backup
     if relative.parts and relative.parts[0] in ("users", "_template", "_backup_premigration"):
         return path
+    # Don't remap shared files — they're global across all users
+    if relative.name in SHARED_FILES:
+        return path
     return Path(user_dir) / relative
 
 
@@ -1075,7 +1238,11 @@ def load_json(path: Path, default=None):
     if path.exists():
         try:
             with open(path, "r") as f:
-                return json.load(f)
+                data = json.load(f)
+            # Type-safety: if caller expects a dict but file has a list (or vice versa), return default
+            if default is not None and type(data) != type(default):
+                return default
+            return data
         except Exception:
             pass
     return default if default is not None else {}
@@ -1451,6 +1618,7 @@ def get_planned_investment(asset_class: str, year: int) -> float:
     2. planned_investment_yr[asset_class] — default annual amount
     """
     plan = load_json(DATA_DIR / "investment_plan.json", {})
+    if not isinstance(plan, dict): plan = {}
     # Check per-year override first
     by_year = plan.get("planned_investment_by_year", {})
     ac_years = by_year.get(asset_class, {})
@@ -1464,6 +1632,7 @@ def get_planned_investment(asset_class: str, year: int) -> float:
 def get_dividend_yield_pct(asset_class: str) -> float:
     """Get expected dividend yield % for an asset class from investment plan."""
     plan = load_json(DATA_DIR / "investment_plan.json", {})
+    if not isinstance(plan, dict): plan = {}
     return float(plan.get("dividend_yield_pct", {}).get(asset_class, 0))
 
 
@@ -1586,7 +1755,7 @@ def get_cash_total_eur(fx_rates: dict) -> float:
 
 def get_debt_total_eur() -> float:
     items = load_json(DATA_DIR / "debt.json", [])
-    return -sum(i.get("outstanding_balance_eur", 0) * i.get("pro_rata_pct", 100) / 100 for i in items)
+    return -sum(i.get("outstanding_balance_eur", 0) for i in items)
 
 
 def get_all_totals_eur(fx_rates: dict) -> dict:
@@ -1617,6 +1786,7 @@ def get_portfolio_projection(scenario: str, fx_rates: dict, assumptions: dict, y
     """
     totals = get_all_totals_eur(fx_rates)
     plan = load_json(DATA_DIR / "investment_plan.json", {})
+    if not isinstance(plan, dict): plan = {}
     planned_inv = plan.get("planned_investment_yr", {})
     cf = load_json(DATA_DIR / "cashflow.json", {})
     cf_years = [str(y) for y in cf.get("years", [])]
@@ -1886,6 +2056,18 @@ def get_funds_calls_by_year() -> dict:
     return calls
 
 
+def get_funds_distributions_by_year() -> dict:
+    """Return dict {year_int: total_distribution_eur} of fund distributions by year."""
+    funds = load_json(DATA_DIR / "funds.json", [])
+    dists = {}
+    for f in funds:
+        for yr_str, amt in f.get("distribution_history", {}).items():
+            yr = int(yr_str)
+            if amt:
+                dists[yr] = dists.get(yr, 0) + amt
+    return dists
+
+
 def get_business_investments_by_year() -> dict:
     """Return dict {year_int: total_investment} from business.json year_started.
 
@@ -1932,20 +2114,27 @@ def get_business_income_by_year() -> dict:
 
 
 def get_debt_payments_by_year() -> dict:
-    """Return dict {year_int: total_annual_payment} from debt.json."""
+    """Return dict {year_int: total_payment} from debt.json.
+    Uses payment_history for actual per-year payments, falls back to annual_payment_eur for future years."""
     items = load_json(DATA_DIR / "debt.json", [])
     payments = {}
     for d in items:
         annual = d.get("annual_payment_eur", 0)
-        if annual <= 0:
-            continue
+        ph = d.get("payment_history", {})
         balance = d.get("outstanding_balance_eur", 0)
-        if balance <= 0:
+        if balance <= 0 and annual <= 0:
             continue
-        # Approximate: payments for ~ceil(balance/annual) years from now
-        remaining_years = max(1, int(balance / annual) + 1) if annual > 0 else 0
-        for yr in range(CURRENT_YEAR, CURRENT_YEAR + remaining_years + 1):
-            payments[yr] = payments.get(yr, 0) + annual
+        # Use actual payment_history for past/present years
+        for yr_str, amt in ph.items():
+            yr = int(yr_str)
+            payments[yr] = payments.get(yr, 0) + float(amt)
+        # For future years without payment_history, use annual_payment_eur
+        if annual > 0 and balance > 0:
+            remaining_years = max(1, int(balance / annual) + 1) if annual > 0 else 0
+            for yr in range(CURRENT_YEAR, CURRENT_YEAR + remaining_years + 1):
+                yr_str = str(yr)
+                if yr_str not in ph:
+                    payments[yr] = payments.get(yr, 0) + annual
     return payments
 
 
@@ -1966,6 +2155,7 @@ def get_pe_dividends_total(year: int = 0) -> float:
 def get_investment_plan_by_year() -> dict:
     """Return dict {asset_class: annual_amount} from investment_plan.json."""
     plan = load_json(DATA_DIR / "investment_plan.json", {})
+    if not isinstance(plan, dict): plan = {}
     return plan.get("planned_investment_yr", {})
 
 
@@ -2018,6 +2208,7 @@ def get_valuation_new_capital(asset_class: str, ibkr_key: str, year: int) -> flo
     Returns the value as-is (positive = invested, negative = sold).
     """
     plan = load_json(DATA_DIR / "investment_plan.json", {})
+    if not isinstance(plan, dict): plan = {}
     planned_by_year = plan.get("planned_investment_by_year", {}).get(asset_class, {})
 
     # 1. Per-year override from valuation tab edits
@@ -2122,6 +2313,10 @@ def compute_cashflow_line(category: str, year: int, stored_value, cashflow_data:
 
     if category == "PE Dividends":
         return get_pe_dividends_total(year=year)
+
+    if category == "Funds Distributions":
+        dists = get_funds_distributions_by_year()
+        return dists.get(year, stored_value)
 
     if category == "Business Income":
         bi = get_business_income_by_year()
@@ -2397,6 +2592,7 @@ def compute_funds_timeline(years_list: list, scenario: str = "Base") -> list:
     irr_mult = mult["irr"]
 
     plan = load_json(DATA_DIR / "investment_plan.json", {})
+    if not isinstance(plan, dict): plan = {}
     planned_inv = plan.get("planned_investment_yr", {}).get("Funds", 0)
 
     totals = [0.0] * len(years_list)
@@ -2409,7 +2605,14 @@ def compute_funds_timeline(years_list: list, scenario: str = "Base") -> list:
         exit_yr = f.get("expected_exit_year")
         irr = f.get("expected_irr_pct", 0) * irr_mult / 100
         vh = f.get("value_history", {})
-        schedule = {cs.get("year", 0): cs.get("actual_eur", 0) for cs in f.get("capital_call_schedule", [])}
+        committed = f.get("committed_eur", 0) or 0
+        # Use actual EUR if available, otherwise fall back to planned % × committed
+        schedule = {}
+        for cs in f.get("capital_call_schedule", []):
+            yr_cs = cs.get("year", 0)
+            actual = cs.get("actual_eur", 0) or 0
+            planned_pct = cs.get("planned_pct", 0) or 0
+            schedule[yr_cs] = actual if actual > 0 else (planned_pct * committed / 100)
         prev_val = 0
 
         for i, yr in enumerate(years_list):
@@ -2775,9 +2978,12 @@ def get_portfolio_projection_v2(scenario: str, fx_rates: dict, assumptions: dict
         "Debt": compute_debt_timeline(proj_years),
     }
 
+    import math as _math
     for ac, vals in asset_timelines.items():
-        by_asset[ac] = vals
-        for i, v in enumerate(vals):
+        # Sanitize NaN values to 0
+        clean_vals = [0.0 if (isinstance(v, float) and _math.isnan(v)) else v for v in vals]
+        by_asset[ac] = clean_vals
+        for i, v in enumerate(clean_vals):
             total[i] += v
 
     return {"years": proj_years, "total": total, "by_asset": by_asset}
@@ -3495,6 +3701,7 @@ def apply_ibkr_import(result: dict) -> dict:
     # Our convention: positive New Capital = invested, negative = sold
     # So we negate the IBKR value
     plan = load_json(DATA_DIR / "investment_plan.json", {})
+    if not isinstance(plan, dict): plan = {}
     by_year = plan.get("planned_investment_by_year", {})
     plan_ac_map = {
         "Equity": "Equity",

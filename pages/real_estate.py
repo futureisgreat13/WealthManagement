@@ -88,6 +88,16 @@ with tab1:
                                                  "expected_irr_pct", "success_probability_pct"], editor_key="real_estate_properties")
 
     if st.button("💾 Save Properties", type="primary", key="re_save"):
+        deleted = utils.check_deleted_items(items, edited, name_col="name")
+        if not deleted:
+            st.session_state["_pending_save_re_positions"] = True
+        else:
+            st.session_state["_delete_confirm_re_positions"] = deleted
+        st.rerun()
+
+    # Handle pending save / delete confirmation (outside button block for Streamlit rerun compatibility)
+    save_result = utils.handle_save_with_delete_confirmation("re_positions", [])
+    if save_result == "save":
         new_items = []
         for j, (_, row) in enumerate(edited.iterrows()):
             if row.get("name"):
@@ -111,6 +121,8 @@ with tab1:
                 })
         utils.save_json(utils.DATA_DIR / "real_estate.json", new_items)
         st.success("Saved!")
+        st.rerun()
+    elif save_result == "cancelled":
         st.rerun()
 
     # --- Exited Positions ---

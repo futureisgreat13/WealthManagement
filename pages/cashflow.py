@@ -24,6 +24,8 @@ MANUAL_EXPENSE = {"Wealth Tax", "Life Expenses"}
 cf_results = utils.compute_full_cashflow(data)
 
 # ── Year filter: default last 3 actuals + future ──
+if not all_years:
+    all_years = [str(y) for y in range(utils.CURRENT_YEAR - 1, utils.CURRENT_YEAR + 11)]
 cutoff = str(utils.CURRENT_YEAR - 3)
 default_years = [y for y in all_years if y >= cutoff]
 show_all = st.checkbox(f"Show all years (from {all_years[0]})", value=False, key="cf_show_all")

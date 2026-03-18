@@ -52,6 +52,16 @@ edited = st.data_editor(edit_df, use_container_width=True, hide_index=True, num_
 edited = utils.process_math_in_df(edited, numeric_text_cols, editor_key="business_positions")
 
 if st.button("💾 Save Positions", type="primary"):
+    deleted = utils.check_deleted_items(items, edited, name_col="name")
+    if not deleted:
+        st.session_state["_pending_save_business_positions"] = True
+    else:
+        st.session_state["_delete_confirm_business_positions"] = deleted
+    st.rerun()
+
+# Handle pending save / delete confirmation (outside button block for Streamlit rerun compatibility)
+save_result = utils.handle_save_with_delete_confirmation("business_positions", [])
+if save_result == "save":
     new_items = []
     for j, (_, row) in enumerate(edited.iterrows()):
         if row.get("name"):
@@ -74,6 +84,8 @@ if st.button("💾 Save Positions", type="primary"):
             })
     utils.save_json(utils.DATA_DIR / "business.json", new_items)
     st.success("Saved!")
+    st.rerun()
+elif save_result == "cancelled":
     st.rerun()
 
 st.divider()

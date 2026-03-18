@@ -81,6 +81,16 @@ with tab1:
         edited = utils.process_math_in_df(edited, ["amount_invested_eur", "exit_value_eur", "annual_dividend_eur", "expected_irr_pct", "success_probability_pct"], editor_key="private_equity_positions")
 
         if st.button("💾 Save Positions", type="primary", key="pe_save"):
+            deleted = utils.check_deleted_items(items, edited, name_col="name")
+            if not deleted:
+                st.session_state["_pending_save_pe_positions"] = True
+            else:
+                st.session_state["_delete_confirm_pe_positions"] = deleted
+            st.rerun()
+
+        # Handle pending save / delete confirmation (outside button block for Streamlit rerun compatibility)
+        save_result = utils.handle_save_with_delete_confirmation("pe_positions", [])
+        if save_result == "save":
             new_items = []
             for j, (_, row) in enumerate(edited.iterrows()):
                 if row.get("name"):
@@ -103,6 +113,8 @@ with tab1:
                     })
             utils.save_json(utils.DATA_DIR / "private_equity.json", new_items)
             st.success("Saved!")
+            st.rerun()
+        elif save_result == "cancelled":
             st.rerun()
 
     # --- Exited Positions ---

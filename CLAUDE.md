@@ -59,6 +59,9 @@ There is no test suite, linter, or build step. Verification is done manually thr
 - **Visualisation:** Maximize data/space ratio — merge tables, delete redundant views when possible. One editable table instead of a display table + edit table.
 - **Maths:** Any editable cell must allow math expressions like =500*2/EURUSD. Use `process_math_in_df()` to evaluate.
 - **Formatting:** Numbers displayed in K & M with 0 decimal places for K and 1 decimal place for M. Example: 100000 → 100K, 1000000 → 1.0M. Use `_eur_formatter_js()` for AgGrid, `fmt_eur_short()` for display.
+- **Missing data indicators:** On asset class pages, check if base year (CURRENT_YEAR - 1) data is complete. Show red warning above tables for missing items: valuations, capital call actuals, and distribution data. Format: `"⚠️ X items missing {base_year} year-end data: [names]"`. Include a "Last Updated" column showing the most recent year with user-entered data.
+- **Unsaved changes warning:** Use `track_unsaved_changes(key, orig_df, edited_df)` after each editor render, `show_unsaved_warning()` at top of page, and `clear_unsaved(key)` after successful save. This is app-wide — works across tabs and pages.
+- **Delete confirmation:** When saving editable tables with `num_rows="dynamic"`, use `check_deleted_items(original_items, edited_df, name_col)` to detect removed rows, then `handle_save_with_delete_confirmation(key, deleted_names)` to show a confirmation warning before actually deleting. Only save when result is `"save"`. Pattern: `deleted = utils.check_deleted_items(items, edited, "name"); result = utils.handle_save_with_delete_confirmation("key", deleted); if result == "save": ...save...; elif result == "cancelled": st.rerun()`.
 - Always fact check when implementing something.
 - Ask user questions in the middle of execution if stuck.
 
