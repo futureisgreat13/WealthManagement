@@ -2690,35 +2690,39 @@ def get_historical_totals_by_asset(fx_rates: dict) -> dict:
             all_years.update(avh_data.keys())
     all_years.update(actual_cash.keys())
 
-    # Also get years from PE value_history
-    pe_items = load_json(DATA_DIR / "private_equity.json", [])
-    for item in pe_items:
-        vh = item.get("value_history", {})
-        all_years.update(vh.keys())
+    # Also get years from PE/Funds/Business value_history and income_history
+    for fname in ["private_equity.json", "funds.json", "business.json"]:
+        for item in load_json(DATA_DIR / fname, []):
+            for key in ("value_history", "income_history"):
+                all_years.update(item.get(key, {}).keys())
+    for item in load_json(DATA_DIR / "debt.json", []):
+        all_years.update(item.get("value_history", {}).keys())
 
-    # Compute PE values for all historical years using the shared timeline function
+    # Compute per-asset timelines using shared compute functions (same as projection)
     sorted_years = sorted(all_years)
-    pe_hist_years = [int(y) for y in sorted_years]
-    pe_hist_vals = compute_pe_timeline(pe_hist_years, "Base") if pe_hist_years else []
-    pe_by_year = {str(y): v for y, v in zip(pe_hist_years, pe_hist_vals)}
+    hist_years_int = [int(y) for y in sorted_years]
+    computed = {
+        "Private Equity": compute_pe_timeline(hist_years_int, "Base") if hist_years_int else [],
+        "Real Estate": compute_re_timeline(hist_years_int, "Base") if hist_years_int else [],
+        "Funds": compute_funds_timeline(hist_years_int, "Base") if hist_years_int else [],
+        "Business": compute_business_timeline(hist_years_int, "Base") if hist_years_int else [],
+        "Cash": compute_cash_timeline(hist_years_int) if hist_years_int else [],
+        "Debt": compute_debt_timeline(hist_years_int) if hist_years_int else [],
+    }
+    computed_by_year = {}
+    for ac, vals in computed.items():
+        computed_by_year[ac] = {str(y): v for y, v in zip(hist_years_int, vals)}
 
     result = {}
     for yr_str in sorted_years:
-        yr = int(yr_str)
         entry = {}
-        # Auto-computed — PE uses compute_pe_timeline (same function as PE tab + overview projection)
-        entry["Private Equity"] = pe_by_year.get(yr_str, 0)
-        entry["Real Estate"] = get_re_value_by_year(yr)
+        # Use compute functions for PE, RE, Funds, Business, Cash, Debt
+        for ac in ("Private Equity", "Real Estate", "Funds", "Business", "Cash", "Debt"):
+            entry[ac] = computed_by_year.get(ac, {}).get(yr_str, 0)
         # For liquid asset classes: prefer asset_value_history, fall back to asset_history
         for ac in ASSET_CLASSES:
-            if ac in ("Private Equity", "Real Estate"):
+            if ac in entry:
                 continue
-            # Cash: use actual_cash_by_year from cashflow.json
-            if ac == "Cash":
-                cash_val = actual_cash.get(yr_str, 0)
-                entry[ac] = float(cash_val) if cash_val else 0
-                continue
-            # Check asset_value_history first (more granular, correct)
             avh_sum = 0
             for avh_key in _avh_keys.get(ac, []):
                 avh_sum += avh.get(avh_key, {}).get(yr_str, 0)

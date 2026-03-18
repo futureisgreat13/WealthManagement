@@ -87,7 +87,10 @@ def _build_grid(years_list):
         ac_proj = proj_data["by_asset"].get(ac, [])
         for yr in years_list:
             yr_str = str(yr)
-            if yr in proj_data["years"]:
+            # For completed years, use historical data; for future, use projection
+            if yr < utils.CURRENT_YEAR and yr_str in hist_by_asset:
+                val = hist_by_asset[yr_str].get(ac, 0)
+            elif yr in proj_data["years"]:
                 idx = proj_data["years"].index(yr)
                 val = ac_proj[idx] if idx < len(ac_proj) else 0
             else:
@@ -97,7 +100,9 @@ def _build_grid(years_list):
     t_row = {"Asset Class": "TOTAL"}
     for yr in years_list:
         yr_str = str(yr)
-        if yr in proj_data["years"]:
+        if yr < utils.CURRENT_YEAR and yr_str in hist_by_asset:
+            t_row[yr_str] = round(sum(hist_by_asset[yr_str].values()))
+        elif yr in proj_data["years"]:
             idx = proj_data["years"].index(yr)
             t_row[yr_str] = round(proj_data["total"][idx])
         else:
