@@ -205,8 +205,8 @@ if not st.session_state["connected"]:
     )
     st.markdown(f"""
 <div style="display:flex; justify-content:center; margin-top:2rem;">
-    <a href="{auth_url}" target="_top" style="background-color:#4285f4; color:#fff; text-decoration:none;
-       text-align:center; font-size:16px; padding:10px 20px; border-radius:4px; display:flex; align-items:center;">
+    <a href="{auth_url}" onclick="window.top.location.href=this.href; return false;" style="background-color:#4285f4; color:#fff; text-decoration:none;
+       text-align:center; font-size:16px; padding:10px 20px; border-radius:4px; display:flex; align-items:center; cursor:pointer;">
         <img src="https://lh3.googleusercontent.com/COxitqgJr1sJnIDe8-jiKhxDx1FrYbtRHKJ9z_hELisAlapwE9LUPh6fcXIfb5vwpbMl4xl9H9TRFPc5NOO8Sb3VSgIBrfRYvW6cUA"
              alt="G" style="margin-right:8px; width:24px; height:24px; background:white; border:2px solid white; border-radius:4px;">
         Sign in with Google
