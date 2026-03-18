@@ -151,8 +151,8 @@ if all_hist_years_int:
                                   numeric_cols=[str(yr) for yr in all_hist_years_int],
                                   highlight_total_row=True)
 
-# ── PERFORMANCE CHART ──
-st.markdown(f'<h2>Performance ({scenario})</h2>', unsafe_allow_html=True)
+# ── COMPACT PROJECTION STRIP ──
+st.markdown(f'<h2>Projection ({scenario})</h2>', unsafe_allow_html=True)
 
 # Compact: show key milestones inline + small chart
 def _proj_val(proj, yr):
@@ -171,88 +171,32 @@ m2.metric("5 YR", utils.fmt_eur(p_5yr), f"{((p_5yr/p_now-1)*100):+.0f}%" if p_no
 m3.metric("10 YR", utils.fmt_eur(p_10yr), f"{((p_10yr/p_now-1)*100):+.0f}%" if p_now > 0 else "")
 m4.metric("15 YR", utils.fmt_eur(p_15yr), f"{((p_15yr/p_now-1)*100):+.0f}%" if p_now > 0 else "")
 
-# Benchmark selector
-overview_settings = utils.load_json(utils.DATA_DIR / "overview_settings.json", {})
-saved_benchmarks = overview_settings.get("benchmarks", ["S&P 500", "Gold"])
-available_benchmarks = list(utils.BENCHMARK_TICKERS.keys())
-selected_benchmarks = st.multiselect(
-    "Benchmarks", available_benchmarks,
-    default=[b for b in saved_benchmarks if b in available_benchmarks],
-    key="perf_benchmark_selector",
-)
-if selected_benchmarks != saved_benchmarks:
-    overview_settings["benchmarks"] = selected_benchmarks
-    utils.save_json(utils.DATA_DIR / "overview_settings.json", overview_settings)
-
-# Performance chart — unified lines per scenario (solid=past, dotted=future)
+# Compact projection chart
 colors = {"Super Bear": utils.C_RED, "Bear": "#ff9944", "Base": utils.C_ORANGE, "Bull": utils.C_GREEN}
-bm_colors = {"S&P 500": "#4285f4", "Gold": "#fbbc04", "Nasdaq": "#ea4335", "MSCI World": "#34a853", "Euro Stoxx 50": "#8b5cf6"}
 fig = go.Figure()
 
+# Historical
+if hist_net_worth:
+    hist_years_sorted = sorted(int(y) for y in hist_net_worth.keys() if hist_net_worth[y] > 0)
+    if hist_years_sorted:
+        fig.add_trace(go.Scatter(
+            x=hist_years_sorted, y=[hist_net_worth[str(y)] for y in hist_years_sorted],
+            mode="lines+markers", name="Historical",
+            line=dict(color="#555", dash="dot", width=1.5), marker=dict(size=3),
+            hovertemplate="%{x}: €%{y:,.0f}<extra>Historical</extra>"))
+
+# Scenario lines
 selected_scenarios = ["Base", "Bull", "Bear"]
 for s in selected_scenarios:
     s_proj = utils.get_portfolio_projection_v2(s, fx, assumptions, years=16)
-    col = colors.get(s, "#fff")
     lw = 2.5 if s == scenario else 1
+    dash = None if s == scenario else "dash"
+    fig.add_trace(go.Scatter(
+        x=s_proj["years"], y=s_proj["total"], mode="lines",
+        name=s, line=dict(color=colors.get(s, "#fff"), width=lw, dash=dash),
+        hovertemplate="%{x}: €%{y:,.0f}<extra>" + s + "</extra>"))
 
-    # Split into past (solid) and future (dotted) at CURRENT_YEAR
-    past_x, past_y, future_x, future_y = [], [], [], []
-    for yr, val in zip(s_proj["years"], s_proj["total"]):
-        if yr <= utils.CURRENT_YEAR:
-            past_x.append(yr)
-            past_y.append(val)
-        else:
-            future_x.append(yr)
-            future_y.append(val)
-
-    # Overlap: last past point = first future point for continuity
-    if past_x and future_x:
-        future_x.insert(0, past_x[-1])
-        future_y.insert(0, past_y[-1])
-
-    # Past — solid
-    if past_x:
-        fig.add_trace(go.Scatter(
-            x=past_x, y=past_y, mode="lines+markers", name=s,
-            line=dict(color=col, width=lw), marker=dict(size=3),
-            legendgroup=s, hovertemplate="%{x}: €%{y:,.0f}<extra>" + s + "</extra>"))
-
-    # Future — dotted
-    if future_x:
-        fig.add_trace(go.Scatter(
-            x=future_x, y=future_y, mode="lines", name=f"{s} (proj)",
-            line=dict(color=col, width=lw, dash="dot"),
-            legendgroup=s, showlegend=False,
-            hovertemplate="%{x}: €%{y:,.0f}<extra>" + s + " proj</extra>"))
-
-# Benchmark overlay lines — rebased to portfolio starting value
-if selected_benchmarks and s_proj["years"]:
-    first_year = s_proj["years"][0]
-    # Use Base scenario projection for rebasing reference
-    base_proj = utils.get_portfolio_projection_v2("Base", fx, assumptions, years=16)
-    portfolio_start = base_proj["total"][0] if base_proj["total"] else 0
-
-    for bm_name in selected_benchmarks:
-        bm_info = utils.BENCHMARK_TICKERS.get(bm_name)
-        if not bm_info:
-            continue
-        bm_yearly = utils.fetch_benchmark_yearly(bm_info["ticker"], bm_info["currency"], first_year)
-        if not bm_yearly or first_year not in bm_yearly:
-            continue
-        bm_start = bm_yearly[first_year]
-        if bm_start <= 0:
-            continue
-        # Rebase to portfolio starting value
-        rebased_x = sorted(yr for yr in bm_yearly if yr <= utils.CURRENT_YEAR)
-        rebased_y = [(bm_yearly[yr] / bm_start) * portfolio_start for yr in rebased_x]
-        fig.add_trace(go.Scatter(
-            x=rebased_x, y=rebased_y, mode="lines", name=bm_name,
-            line=dict(color=bm_colors.get(bm_name, "#888"), width=1, dash="dashdot"),
-            hovertemplate="%{x}: €%{y:,.0f}<extra>" + bm_name + " (rebased)</extra>"))
-
-layout_kwargs = utils.bloomberg_chart_layout(height=300)
-layout_kwargs["legend"] = dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-fig.update_layout(**layout_kwargs)
+fig.update_layout(**utils.bloomberg_chart_layout(height=250))
 st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 # ── ALLOCATION (compact side-by-side) ──
@@ -397,12 +341,10 @@ with st.expander("Edit Historical Asset Values"):
         row["Total"] = row["PE (auto)"] + row["RE (auto)"] + sum(row.get(ac, 0) for ac in editable_acs)
         edit_rows.append(row)
     edit_df = pd.DataFrame(edit_rows)
-    col_config = {ac: st.column_config.TextColumn(ac) for ac in editable_acs}
-    edit_df = utils.inject_formulas_for_edit(edit_df, "overview_targets", editable_acs)
-    # Ensure numeric columns are string dtype for TextColumn compatibility
-    for ac in editable_acs:
-        if ac in edit_df.columns:
-            edit_df[ac] = edit_df[ac].astype(str)
+    col_config = {ac: st.column_config.NumberColumn(format="€%.0f") for ac in editable_acs}
+    col_config["PE (auto)"] = st.column_config.NumberColumn(format="€%.0f")
+    col_config["RE (auto)"] = st.column_config.NumberColumn(format="€%.0f")
+    col_config["Total"] = st.column_config.NumberColumn(format="€%.0f")
     edited_hist = st.data_editor(
         edit_df, use_container_width=True, hide_index=True, num_rows="dynamic",
         column_config=col_config, disabled=["PE (auto)", "RE (auto)", "Total"])

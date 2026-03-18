@@ -103,7 +103,6 @@ with tab1:
 
     st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable: Target %, Div Yield %, Default Invest/yr</p>', unsafe_allow_html=True)
     st.caption("💡 Supports math expressions (e.g. 500*2) and FX shortcuts (e.g. 1000/EURUSD)")
-    plan_df = utils.inject_formulas_for_edit(plan_df, "investment_plan_targets", ["Target %", "Div Yield %", "Default Invest/yr"])
     edited_plan = st.data_editor(
         plan_df, use_container_width=True, hide_index=True,
         column_config={

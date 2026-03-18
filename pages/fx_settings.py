@@ -77,7 +77,6 @@ for ac in LIQUID_SCENARIO_ACS:
     })
 
 liquid_df = pd.DataFrame(liquid_rows)
-liquid_df = utils.inject_formulas_for_edit(liquid_df, "fx_scenario_multipliers", ["Super Bear %", "Bear %", "Base %", "Bull %"])
 st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable — enter scenario return rates</p>', unsafe_allow_html=True)
 edited_liquid = st.data_editor(liquid_df, use_container_width=True, hide_index=True, key="liquid_assumptions_editor",
     column_config={
@@ -153,7 +152,6 @@ for ac in IRR_BASED_ACS:
     col_config[f"{ac} Override %"] = st.column_config.TextColumn(f"{ac} Override %")
 
 irr_numeric_cols = ["PE IRR ×", "PE Prob ×", "RE IRR ×", "RE Prob ×"] + [f"{ac} Override %" for ac in IRR_BASED_ACS]
-irr_df = utils.inject_formulas_for_edit(irr_df, "fx_irr_overrides", irr_numeric_cols)
 edited_irr = st.data_editor(irr_df, use_container_width=True, hide_index=True,
     column_config=col_config,
     disabled=["Scenario"], key="irr_mult_editor")
@@ -226,7 +224,6 @@ for ac in div_classes:
 
 div_df = pd.DataFrame(div_rows)
 div_numeric_cols = [str(yr) for yr in div_years]
-div_df = utils.inject_formulas_for_edit(div_df, "fx_dividends", div_numeric_cols)
 st.markdown('<p style="background:#1b4332;color:#a7f3d0;padding:4px 12px;border-radius:4px;font-size:0.85em;margin:0">✏️ Editable — enter your values below</p>', unsafe_allow_html=True)
 st.caption("💡 Supports math expressions (e.g. 500*2) and FX shortcuts (e.g. 1000/EURUSD)")
 edited_divs = st.data_editor(div_df, use_container_width=True, hide_index=True,

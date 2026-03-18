@@ -611,6 +611,17 @@ def render_editable_aggrid_table(df, key: str, height: int = 400,
         if col_config:
             gb.configure_column(col, **col_config)
 
+    # Build FX rates map for JS-side formula evaluation
+    fx_rates = load_fx_rates()
+    fx_js_pairs = []
+    for pair, rate in fx_rates.items():
+        fx_js_pairs.append(f'"{pair}": {rate}')
+        # Add inverse pairs (e.g., USDEUR from EURUSD)
+        if len(pair) == 6 and rate > 0:
+            inv_pair = pair[3:] + pair[:3]
+            fx_js_pairs.append(f'"{inv_pair}": {round(1/rate, 6)}')
+    fx_js_map = ", ".join(fx_js_pairs)
+
     grid_opts = {
         "enableRangeSelection": True,
         "tooltipShowDelay": 300,
@@ -621,6 +632,36 @@ def render_editable_aggrid_table(df, key: str, height: int = 400,
             ]
         },
         "singleClickEdit": False,
+        "onCellValueChanged": JsCode(f"""function(params) {{
+            var val = params.newValue;
+            if (val == null || val === '') return;
+            // Skip if already a plain number (prevents infinite loop from setDataValue)
+            if (typeof val === 'number') return;
+            var s = String(val).trim();
+            // Skip if it's just a numeric string
+            if (/^-?\\d+\\.?\\d*$/.test(s)) return;
+            // Only process if starts with = or contains math operators (not just a negative number)
+            var isFormula = (s.indexOf('=') === 0);
+            var stripped = s.replace(/^-/, '');
+            var hasMath = /[+\\-*/]/.test(stripped);
+            if (!isFormula && !hasMath) return;
+            if (s.indexOf('=') === 0) s = s.substring(1).trim();
+            // Substitute FX variable names with rates
+            var fxRates = {{{fx_js_map}}};
+            for (var k in fxRates) {{
+                if (fxRates.hasOwnProperty(k)) {{
+                    s = s.replace(new RegExp(k, 'gi'), String(fxRates[k]));
+                }}
+            }}
+            try {{
+                var result = Function('"use strict"; return (' + s + ')')();
+                if (typeof result === 'number' && isFinite(result)) {{
+                    params.node.setDataValue(params.column.colId, Math.round(result));
+                }}
+            }} catch(e) {{
+                // Invalid expression — leave as-is
+            }}
+        }}"""),
     }
     if highlight_total_row:
         grid_opts["getRowStyle"] = JsCode(f"""
