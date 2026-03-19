@@ -372,8 +372,18 @@ with st.sidebar:
         st.rerun()
 
 # Auto-refresh market data (runs on every app load, throttled to 15 min)
-auto_refresh_fx_rates()
-auto_refresh_stock_prices()
-get_live_market_data()  # warm cache for market prices (indices, commodities, crypto)
+# Wrapped in try/except to prevent page hangs on Cloud
+try:
+    auto_refresh_fx_rates()
+except Exception:
+    pass
+try:
+    auto_refresh_stock_prices()
+except Exception:
+    pass
+try:
+    get_live_market_data()
+except Exception:
+    pass
 
 nav.run()

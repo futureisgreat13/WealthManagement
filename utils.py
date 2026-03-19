@@ -1285,22 +1285,40 @@ def _is_user_file(path: Path) -> bool:
     return relative.name not in SHARED_FILES
 
 
-def _supabase_load(file_name: str, user_email: str, default=None):
-    """Load JSON data from Supabase for a specific user and file."""
+def _supabase_load_all_user_data(user_email: str) -> dict:
+    """Load ALL data for a user from Supabase in one query. Cached in session state."""
+    cache_key = f"_sb_cache_{user_email}"
+    if cache_key in st.session_state:
+        return st.session_state[cache_key]
     client = _get_supabase_client()
     if client is None:
-        return None  # Supabase not configured, use filesystem
+        return {}
     try:
-        result = client.table("user_data").select("data").eq(
-            "user_email", user_email).eq("file_name", file_name).execute()
-        if result.data and len(result.data) > 0:
-            data = result.data[0]["data"]
-            if default is not None and type(data) != type(default):
-                return default
-            return data
+        result = client.table("user_data").select("file_name,data").eq(
+            "user_email", user_email).execute()
+        cache = {row["file_name"]: row["data"] for row in result.data}
+        st.session_state[cache_key] = cache
+        return cache
     except Exception:
-        pass
-    return None  # Not found or error — fall through to filesystem
+        return {}
+
+
+def _supabase_invalidate_cache(user_email: str):
+    """Clear the Supabase cache for a user (call after save)."""
+    cache_key = f"_sb_cache_{user_email}"
+    st.session_state.pop(cache_key, None)
+
+
+def _supabase_load(file_name: str, user_email: str, default=None):
+    """Load JSON data from Supabase for a specific user and file."""
+    # Use cached bulk load
+    cache = _supabase_load_all_user_data(user_email)
+    if file_name in cache:
+        data = cache[file_name]
+        if default is not None and type(data) != type(default):
+            return default
+        return data
+    return None  # Not found — fall through to filesystem
 
 
 def _supabase_save(file_name: str, user_email: str, data) -> bool:
@@ -1315,6 +1333,10 @@ def _supabase_save(file_name: str, user_email: str, data) -> bool:
             "data": data,
             "updated_at": datetime.now().isoformat(),
         }, on_conflict="user_email,file_name").execute()
+        # Update local cache
+        cache_key = f"_sb_cache_{user_email}"
+        if cache_key in st.session_state:
+            st.session_state[cache_key][file_name] = data
         return True
     except Exception:
         return False
