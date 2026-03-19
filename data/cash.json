@@ -1,5 +1,1 @@
-[
-  {"id":"c1","name":"IB Account","bank":"Interactive Brokers","currency":"EUR","amount":1320000,"interest_rate_pct":0,"type":"Cash"},
-  {"id":"c2","name":"ABN AMRO","bank":"ABN AMRO","currency":"EUR","amount":50000,"interest_rate_pct":0.5,"type":"Cash"},
-  {"id":"c3","name":"Wise","bank":"Wise","currency":"EUR","amount":430000,"interest_rate_pct":0,"type":"Cash"}
-]
+[]

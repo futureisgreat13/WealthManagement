@@ -1,0 +1,39 @@
+{
+  "free_share_price": 10000,
+  "bound_share_price": 3631,
+  "free_shares": [
+    {"id": "f1", "year": 2019, "shares_added": 85, "invested_amount": 204000},
+    {"id": "f2", "year": 2020, "shares_added": 50, "invested_amount": 177500},
+    {"id": "f3", "year": 2023, "shares_added": 150, "invested_amount": 0},
+    {"id": "f4", "year": 2024, "shares_added": 375, "invested_amount": 0},
+    {"id": "f5", "year": 2025, "shares_added": 350, "invested_amount": 0},
+    {"id": "f6", "year": 2026, "shares_added": 350, "invested_amount": 0}
+  ],
+  "bound_shares": [
+    {"id": "b1", "year": 2017, "shares_added": 75, "invested_amount": 65250},
+    {"id": "b2", "year": 2018, "shares_added": 150, "invested_amount": 193950},
+    {"id": "b3", "year": 2019, "shares_added": 300, "invested_amount": 465500},
+    {"id": "b4", "year": 2020, "shares_added": 350, "invested_amount": 544250},
+    {"id": "b5", "year": 2021, "shares_added": 350, "invested_amount": 672350},
+    {"id": "b6", "year": 2022, "shares_added": 500, "invested_amount": 1445500},
+    {"id": "b7", "year": 2023, "shares_added": 600, "invested_amount": 3420750},
+    {"id": "b8", "year": 2024, "shares_added": -375, "invested_amount": 0},
+    {"id": "b9", "year": 2025, "shares_added": -350, "invested_amount": 0},
+    {"id": "b10", "year": 2026, "shares_added": -1600, "invested_amount": -6500000}
+  ],
+  "dividends": [
+    {"id": "d1", "year": 2020, "div_per_share": 110, "shares_eligible": 610, "tax": 0, "net_dividend": 67100},
+    {"id": "d2", "year": 2020, "div_per_share": 200, "shares_eligible": 1010, "tax": 0, "net_dividend": 202000},
+    {"id": "d3", "year": 2021, "div_per_share": 300, "shares_eligible": 1010, "tax": 0, "net_dividend": 303000},
+    {"id": "d4", "year": 2021, "div_per_share": 200, "shares_eligible": 1360, "tax": 0, "net_dividend": 272000},
+    {"id": "d5", "year": 2022, "div_per_share": 300, "shares_eligible": 1360, "tax": 0, "net_dividend": 408000},
+    {"id": "d6", "year": 2022, "div_per_share": 200, "shares_eligible": 1860, "tax": 0, "net_dividend": 372000},
+    {"id": "d7", "year": 2023, "div_per_share": 300, "shares_eligible": 1860, "tax": 0, "net_dividend": 558000},
+    {"id": "d8", "year": 2023, "div_per_share": 200, "shares_eligible": 2610, "tax": 0, "net_dividend": 522000},
+    {"id": "d9", "year": 2024, "div_per_share": 300, "shares_eligible": 2610, "tax": 0, "net_dividend": 783000},
+    {"id": "d10", "year": 2024, "div_per_share": 200, "shares_eligible": 2610, "tax": 0, "net_dividend": 522000},
+    {"id": "d11", "year": 2025, "div_per_share": 400, "shares_eligible": 2610, "tax": 0, "net_dividend": 1044000},
+    {"id": "d12", "year": 2025, "div_per_share": 200, "shares_eligible": 2610, "tax": 0, "net_dividend": 522000}
+  ],
+  "scenario_appreciation": {"super_bear": -10, "bear": 0, "base": 5, "bull": 15}
+}

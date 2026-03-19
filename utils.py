@@ -1290,23 +1290,15 @@ def setup_user_data_dir(email: str, name: str = "") -> Path:
     if not user_dir.exists():
         user_dir.mkdir(parents=True, exist_ok=True)
 
-        # First user ever? Copy actual data (owner). Otherwise copy blank templates.
-        any_existing_users = USERS_DIR.exists() and any(
-            d.is_dir() and d.name != safe_email for d in USERS_DIR.iterdir()
-            if not d.name.startswith(".")
-        )
-
-        if not any_existing_users and not TEMPLATE_DIR.exists():
-            # First user (owner) — copy actual data files, then create templates
-            for json_file in DATA_DIR.glob("*.json"):
+        # Always copy from templates for new users (never copy root data)
+        if TEMPLATE_DIR.exists():
+            for json_file in TEMPLATE_DIR.glob("*.json"):
                 shutil.copy2(json_file, user_dir / json_file.name)
-            # Create blank templates for future users
-            _create_blank_templates()
         else:
-            # Subsequent user — copy from templates
-            if TEMPLATE_DIR.exists():
-                for json_file in TEMPLATE_DIR.glob("*.json"):
-                    shutil.copy2(json_file, user_dir / json_file.name)
+            # No templates — create minimal blank files
+            _create_blank_templates()
+            for json_file in TEMPLATE_DIR.glob("*.json"):
+                shutil.copy2(json_file, user_dir / json_file.name)
 
     # Write/update profile
     profile_path = user_dir / "_profile.json"

@@ -3,7 +3,7 @@
 .streamlit/_pkce/
 .streamlit/_sessions/
 data/users/
+!data/users/anandrathi13@gmail.com/
 data/_backup_premigration/
-data/_template/
 __pycache__/
 *.pyc
