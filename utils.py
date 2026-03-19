@@ -3504,6 +3504,235 @@ def _asset_class_label(category: str) -> str:
     }.get(category, "Equity")
 
 
+def _split_ibkr_activity_sections(csv_text: str) -> dict:
+    """Split an IBKR standard Activity Statement CSV into sections.
+
+    The CSV format has:
+    - Column 1: section name (e.g., 'Open Positions', 'Trades', 'Dividends')
+    - Column 2: 'Header' or 'Data'
+    - Remaining columns: section-specific data
+
+    Returns dict: {section_name: [list of row dicts keyed by header names]}
+    """
+    import csv as csv_mod
+    import io
+    sections = {}
+    current_section = None
+    current_headers = None
+
+    for line in csv_mod.reader(io.StringIO(csv_text)):
+        if len(line) < 3:
+            continue
+        section_name = line[0].strip()
+        row_type = line[1].strip()
+
+        if row_type == "Header":
+            current_section = section_name
+            current_headers = [h.strip() for h in line[2:]]
+            if section_name not in sections:
+                sections[section_name] = []
+        elif row_type == "Data" and current_section == section_name and current_headers:
+            row_data = {}
+            for i, val in enumerate(line[2:]):
+                if i < len(current_headers):
+                    row_data[current_headers[i]] = val.strip()
+            sections[section_name].append(row_data)
+
+    return sections
+
+
+def parse_ibkr_activity_statement(csv_text: str) -> dict:
+    """Parse the standard IBKR Activity Statement CSV (single file).
+
+    Any IBKR user can download this from:
+    Performance & Reports → Statements → Activity → CSV
+
+    Returns dict with same structure as parse_ibkr_positions_csv():
+        positions: [{symbol, currency, quantity, mark_price, cost_basis_price,
+                     position_value, cost_basis_money, unrealized_pnl, fx_rate}]
+        dividends: [{symbol, currency, amount, fx_rate, amount_eur}]
+        cash_summary: {currency: {dividends, deposits, withdrawals}}
+    And transactions list with same structure as parse_ibkr_transactions_csv():
+        transactions: [{symbol, quantity, trade_price, proceeds, cost_basis,
+                       pnl, currency, fx_rate, trade_date, net_cash}]
+    """
+    import re
+
+    sections = _split_ibkr_activity_sections(csv_text)
+
+    # --- Extract FX rates from Forex Balances ---
+    fx_rates_map = {"EUR": 1.0}
+    for row in sections.get("Forex Balances", []):
+        ccy = row.get("Description", "").strip()
+        close_str = row.get("Close Price", "")
+        if ccy and close_str:
+            try:
+                fx_rates_map[ccy] = float(close_str)
+            except (ValueError, TypeError):
+                pass
+
+    # Fallback: try app's stored FX rates for missing currencies
+    try:
+        app_fx = load_fx_rates()
+    except Exception:
+        # Direct file read fallback (works outside Streamlit context)
+        try:
+            app_fx = load_json(DATA_DIR / "fx_rates.json", {})
+        except Exception:
+            app_fx = {}
+    for pair, rate in app_fx.items():
+        if pair.startswith("EUR") and len(pair) == 6:
+            ccy = pair[3:]
+            if ccy not in fx_rates_map and rate > 0:
+                fx_rates_map[ccy] = 1.0 / rate  # EUR/X rate → EUR per 1 unit of X
+
+    # --- Extract Positions from Open Positions section ---
+    positions = []
+    for row in sections.get("Open Positions", []):
+        # Only "Summary" rows are actual positions (skip subtotals/totals)
+        if row.get("DataDiscriminator", "") != "Summary":
+            continue
+        symbol = row.get("Symbol", "").strip()
+        currency = row.get("Currency", "EUR").strip()
+        if not symbol:
+            continue
+
+        try:
+            quantity = float(row.get("Quantity", 0) or 0)
+            mark_price = float(row.get("Close Price", 0) or 0)
+            cost_basis_price = float(row.get("Cost Price", 0) or 0)
+            position_value = float(row.get("Value", 0) or 0)
+            cost_basis_money = float(row.get("Cost Basis", 0) or 0)
+            unrealized_pnl = float(row.get("Unrealized P/L", 0) or 0)
+        except (ValueError, TypeError):
+            continue
+
+        fx_rate = fx_rates_map.get(currency, 1.0)
+
+        positions.append({
+            "symbol": symbol,
+            "currency": currency,
+            "quantity": quantity,
+            "mark_price": mark_price,
+            "cost_basis_price": cost_basis_price,
+            "unrealized_pnl": unrealized_pnl,
+            "position_value": position_value,
+            "cost_basis_money": cost_basis_money,
+            "fx_rate": fx_rate,
+        })
+
+    # --- Extract Dividends ---
+    dividends = []
+    for row in sections.get("Dividends", []):
+        desc = row.get("Description", "")
+        currency = row.get("Currency", "EUR").strip()
+        try:
+            amount = float(row.get("Amount", 0) or 0)
+        except (ValueError, TypeError):
+            continue
+
+        # Extract symbol from description: "TTE(FR0000120271) Cash Dividend..."
+        match = re.match(r'^(\S+?)\(', desc)
+        symbol = match.group(1) if match else desc.split()[0] if desc else ""
+        if not symbol:
+            continue
+
+        fx_rate = fx_rates_map.get(currency, 1.0)
+        dividends.append({
+            "symbol": symbol,
+            "currency": currency,
+            "amount": amount,
+            "fx_rate": fx_rate,
+            "amount_eur": round(amount * fx_rate, 2),
+        })
+
+    # --- Add Withholding Tax as negative dividends ---
+    for row in sections.get("Withholding Tax", []):
+        desc = row.get("Description", "")
+        currency = row.get("Currency", "EUR").strip()
+        try:
+            amount = float(row.get("Amount", 0) or 0)
+        except (ValueError, TypeError):
+            continue
+
+        match = re.match(r'^(\S+?)\(', desc)
+        symbol = match.group(1) if match else desc.split()[0] if desc else ""
+        if not symbol:
+            continue
+
+        fx_rate = fx_rates_map.get(currency, 1.0)
+        dividends.append({
+            "symbol": symbol,
+            "currency": currency,
+            "amount": amount,
+            "fx_rate": fx_rate,
+            "amount_eur": round(amount * fx_rate, 2),
+        })
+
+    # --- Extract Cash Summary from Deposits & Withdrawals ---
+    cash_summary = {}
+    for row in sections.get("Deposits & Withdrawals", []):
+        currency = row.get("Currency", "EUR").strip()
+        try:
+            amount = float(row.get("Amount", 0) or 0)
+        except (ValueError, TypeError):
+            continue
+        if currency not in cash_summary:
+            cash_summary[currency] = {"dividends": 0, "deposits": 0, "withdrawals": 0}
+        if amount > 0:
+            cash_summary[currency]["deposits"] += amount
+        else:
+            cash_summary[currency]["withdrawals"] += abs(amount)
+
+    # --- Extract Transactions from Trades section ---
+    transactions = []
+    for row in sections.get("Trades", []):
+        if row.get("DataDiscriminator", "") != "Order":
+            continue
+        symbol = row.get("Symbol", "").strip()
+        currency = row.get("Currency", "EUR").strip()
+        if not symbol:
+            continue
+
+        try:
+            quantity = float(row.get("Quantity", "0").replace(",", "") or 0)
+            trade_price = float(row.get("T. Price", 0) or 0)
+            proceeds = float(row.get("Proceeds", "0").replace(",", "") or 0)
+            cost_basis = float(row.get("Basis", "0").replace(",", "") or 0)
+            pnl = float(row.get("Realized P/L", "0").replace(",", "") or 0)
+        except (ValueError, TypeError):
+            continue
+
+        fx_rate = fx_rates_map.get(currency, 1.0)
+        # Trade date from "Date/Time" field: "2025-11-20, 03:00:08"
+        trade_date_raw = row.get("Date/Time", "")
+        trade_date = trade_date_raw.split(",")[0].replace("-", "") if trade_date_raw else ""
+
+        # net_cash: positive = cash received (sell), negative = cash paid (buy)
+        # In standard format, Proceeds captures this: positive for sells
+        net_cash = proceeds
+
+        transactions.append({
+            "symbol": symbol,
+            "quantity": quantity,
+            "trade_price": trade_price,
+            "proceeds": proceeds,
+            "cost_basis": cost_basis,
+            "pnl": pnl,
+            "currency": currency,
+            "fx_rate": fx_rate,
+            "trade_date": trade_date,
+            "net_cash": net_cash,
+        })
+
+    return {
+        "positions": positions,
+        "dividends": dividends,
+        "cash_summary": cash_summary,
+        "transactions": transactions,
+    }
+
+
 def parse_ibkr_positions_csv(csv_text: str) -> dict:
     """Parse the IBKR positions+dividends CSV (multi-section format).
 
@@ -3655,8 +3884,13 @@ def is_fx_symbol(symbol: str) -> bool:
     return False
 
 
-def compute_ibkr_import(positions_csv: str, transactions_csv: str, year: int) -> dict:
-    """Main IBKR import function: parses both CSVs and classifies everything.
+def compute_ibkr_import(positions_csv: str, transactions_csv: str, year: int,
+                        *, activity_statement: str = None) -> dict:
+    """Main IBKR import function: parses CSVs and classifies everything.
+
+    Accepts either:
+    - Standard Activity Statement (single file): pass activity_statement=csv_text
+    - Custom Report (two files): pass positions_csv + transactions_csv
 
     Returns dict:
         year: int
@@ -3670,9 +3904,14 @@ def compute_ibkr_import(positions_csv: str, transactions_csv: str, year: int) ->
     classifications = load_symbol_classifications()
     year_str = str(year)
 
-    # Parse CSVs
-    pos_data = parse_ibkr_positions_csv(positions_csv)
-    transactions = parse_ibkr_transactions_csv(transactions_csv)
+    # Parse CSVs — either standard or custom format
+    if activity_statement:
+        parsed = parse_ibkr_activity_statement(activity_statement)
+        pos_data = parsed  # has positions, dividends, cash_summary
+        transactions = parsed["transactions"]
+    else:
+        pos_data = parse_ibkr_positions_csv(positions_csv)
+        transactions = parse_ibkr_transactions_csv(transactions_csv)
 
     # --- Positions: classify and compute valuations ---
     positions_by_class = {}

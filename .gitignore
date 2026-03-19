@@ -6,3 +6,4 @@ data/users/
 data/_backup_premigration/
 __pycache__/
 *.pyc
+DEVELOPER_NOTES.md

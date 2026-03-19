@@ -7,7 +7,7 @@ import utils
 
 st.title("📥 IBKR Import")
 st.markdown('<style>div[data-testid="stMetric"]{padding:8px 0}div.stDataFrame,div[data-testid="stDataEditor"]{background:#111827;border:1px solid #1e3a5f;border-radius:8px;padding:4px}</style>', unsafe_allow_html=True)
-st.caption("Upload two IBKR CSV exports to import positions, dividends, and net capital flows. "
+st.caption("Import positions, dividends, and net capital flows from IBKR. "
            "Symbols are classified using the Symbol Classifications database.")
 
 # --- Step 0: Year Selection ---
@@ -18,42 +18,62 @@ import_year = st.number_input("Which year are these CSVs for?", min_value=2020,
 
 # --- Step 1: Upload CSVs ---
 st.divider()
-st.subheader("📂 Upload CSVs")
+st.subheader("📂 Upload CSV")
 
-col1, col2 = st.columns(2)
-with col1:
-    st.markdown("**CSV 1: Positions & Dividends**")
-    st.caption("Contains open positions + dividend payments per symbol. "
-               "Download from IBKR: Reports → Activity → Custom → select Positions & Dividends.")
-    uploaded_pos = st.file_uploader("Positions & Dividends CSV", type=["csv"], key="pos_csv")
+import_format = st.radio("Import Format",
+    ["Standard Activity Statement (Recommended)", "Custom Report (Advanced)"],
+    horizontal=True, key="ibkr_format",
+    help="Standard: single file download from IBKR. Custom: requires two separate custom-configured reports.")
 
-with col2:
-    st.markdown("**CSV 2: Transactions (Trades)**")
-    st.caption("Contains all buy/sell transactions for the period. "
-               "Download from IBKR: Reports → Activity → Custom → select Trades.")
-    uploaded_tx = st.file_uploader("Transactions CSV", type=["csv"], key="tx_csv")
+result = None
 
-# --- Process uploads ---
-if uploaded_pos and uploaded_tx:
-    try:
-        pos_content = uploaded_pos.read().decode("utf-8")
-        tx_content = uploaded_tx.read().decode("utf-8")
+if import_format.startswith("Standard"):
+    st.caption("Download from IBKR: **Performance & Reports → Statements → Activity → Period: Annual → Format: CSV**")
+    uploaded_activity = st.file_uploader("Activity Statement CSV", type=["csv"], key="activity_csv")
 
-        # Validate dates in transactions match selected year
-        tx_years = set()
-        for line in tx_content.strip().split("\n")[1:]:
-            parts = line.split(",")
-            for p in parts:
-                p = p.strip().strip('"')
-                if len(p) == 8 and p.isdigit():
-                    tx_years.add(p[:4])
-                    break
-        if tx_years and str(import_year) not in tx_years:
-            st.warning(f"⚠️ The transactions CSV contains dates from year(s) **{', '.join(sorted(tx_years))}** "
-                       f"but you selected import year **{import_year}**. Please verify this is correct.")
+    if uploaded_activity:
+        try:
+            activity_content = uploaded_activity.read().decode("utf-8-sig")
 
-        # Run the import computation
-        result = utils.compute_ibkr_import(pos_content, tx_content, import_year)
+            # Auto-detect year from Statement section
+            import re
+            period_match = re.search(r'Period,"?([^"]*(\d{4})[^"]*)"?', activity_content)
+            if period_match:
+                detected_year = int(period_match.group(2))
+                if detected_year != import_year:
+                    st.warning(f"⚠️ CSV covers year **{detected_year}** but import year is **{import_year}**.")
+
+            result = utils.compute_ibkr_import(None, None, import_year, activity_statement=activity_content)
+        except Exception as e:
+            st.error(f"Error processing activity statement: {e}")
+            import traceback
+            st.code(traceback.format_exc())
+
+else:  # Custom Report
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("**CSV 1: Positions & Dividends**")
+        st.caption("Download from IBKR: Reports → Activity → Custom → select Positions & Dividends.")
+        uploaded_pos = st.file_uploader("Positions & Dividends CSV", type=["csv"], key="pos_csv")
+    with col2:
+        st.markdown("**CSV 2: Transactions (Trades)**")
+        st.caption("Download from IBKR: Reports → Activity → Custom → select Trades.")
+        uploaded_tx = st.file_uploader("Transactions CSV", type=["csv"], key="tx_csv")
+
+    if uploaded_pos and uploaded_tx:
+        try:
+            pos_content = uploaded_pos.read().decode("utf-8")
+            tx_content = uploaded_tx.read().decode("utf-8")
+            result = utils.compute_ibkr_import(pos_content, tx_content, import_year)
+        except Exception as e:
+            st.error(f"Error processing custom reports: {e}")
+            import traceback
+            st.code(traceback.format_exc())
+    elif uploaded_pos or uploaded_tx:
+        st.info("Please upload **both** CSVs to proceed with the import.")
+
+# --- Process result (shared for both formats) ---
+if result:
 
         # --- Show unclassified symbols with inline classification ---
         if result["unclassified"]:
@@ -197,29 +217,9 @@ if uploaded_pos and uploaded_tx:
             """)
             st.balloons()
 
-    except Exception as e:
-        st.error(f"Error processing files: {e}")
-        import traceback
-        st.code(traceback.format_exc())
-
-elif uploaded_pos or uploaded_tx:
-    st.info("Please upload **both** CSVs to proceed with the import.")
-
-else:
-    st.info("Upload both IBKR CSVs to begin importing.")
+if not result:
+    st.info("Upload your IBKR CSV to begin importing.")
     st.markdown("""
-    **How to download from IBKR:**
-
-    **CSV 1 — Positions & Dividends:**
-    1. Go to Reports → Flex Queries (or Activity → Custom Statements)
-    2. Include: Open Positions, Cash Report, Dividends
-    3. Export as CSV
-
-    **CSV 2 — Transactions:**
-    1. Go to Reports → Flex Queries (or Activity → Custom Statements)
-    2. Include: Trades
-    3. Export as CSV
-
     **What gets imported:**
     - 📊 **Year-end valuations** per asset class (Equity, ETF, REIT, Precious Metals, Bonds)
     - 💰 **Dividends** per asset class for cash flow actuals
