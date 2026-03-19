@@ -1262,14 +1262,15 @@ def _get_supabase_client():
     if "_supabase_client" in st.session_state:
         return st.session_state["_supabase_client"]
     try:
-        url = st.secrets.get("supabase", {}).get("url")
-        key = st.secrets.get("supabase", {}).get("key")
+        sb_secrets = st.secrets["supabase"]
+        url = sb_secrets["url"]
+        key = sb_secrets["key"]
         if url and key:
             from supabase import create_client
             client = create_client(url, key)
             st.session_state["_supabase_client"] = client
             return client
-    except Exception:
+    except (KeyError, FileNotFoundError, Exception):
         pass
     st.session_state["_supabase_client"] = None
     return None
@@ -1299,7 +1300,7 @@ def _supabase_load(file_name: str, user_email: str, default=None):
             return data
     except Exception:
         pass
-    return None  # Not found in Supabase
+    return None  # Not found or error — fall through to filesystem
 
 
 def _supabase_save(file_name: str, user_email: str, data) -> bool:
