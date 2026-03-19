@@ -220,21 +220,6 @@ user_email = st.session_state["user_info"]["email"]
 user_name  = st.session_state["user_info"].get("name", "")
 user_dir   = setup_user_data_dir(user_email, user_name)
 
-# Debug: Supabase status (temporary — remove after verification)
-with st.sidebar.expander("🔧 Debug: Supabase", expanded=False):
-    from utils import _get_supabase_client, _supabase_load
-    sb = _get_supabase_client()
-    st.write(f"Client: {'✅ Connected' if sb else '❌ None'}")
-    st.write(f"user_email in session: {st.session_state.get('user_email', 'NOT SET')}")
-    if sb:
-        test = _supabase_load("public_stocks.json", st.session_state.get("user_email", ""))
-        st.write(f"Test load public_stocks: {'✅ ' + str(len(test)) + ' items' if test else '❌ None'}")
-    else:
-        try:
-            st.write(f"Secrets keys: {list(st.secrets.keys())}")
-        except Exception as e:
-            st.write(f"Secrets error: {e}")
-
 # Load profile to check onboarding
 profile_path = user_dir / "_profile.json"
 profile = {}

@@ -59,21 +59,6 @@ def fmt_eur_short(value) -> str:
     return "€0"
 
 
-def fmt_pct(value: float) -> str:
-    return f"{value:.1f}%"
-
-
-def color_negative(value: float, formatted: str) -> str:
-    if value < 0:
-        return f"<span style='color:#FF4444'>{formatted}</span>"
-    return formatted
-
-
-# ---------------------------------------------------------------------------
-# Bloomberg Theme
-# ---------------------------------------------------------------------------
-
-# Color constants
 BG_BLACK = "#000000"
 BG_PANEL = "#0a0a0a"
 BG_HEADER = "#0d0d0d"
@@ -247,18 +232,6 @@ def _eur_formatter_js():
             else if (abs >= 1e3) formatted = '€' + (abs / 1e3).toFixed(0) + 'K';
             else formatted = '€' + abs.toFixed(0);
             return neg ? '-' + formatted : formatted;
-        }
-    """)
-
-
-def _pct_formatter_js():
-    """JS valueFormatter that formats numbers as percentages (e.g. 12.2%)."""
-    return JsCode("""
-        function(params) {
-            if (params.value == null || params.value === '' || isNaN(params.value)) return params.value || '';
-            var v = Number(params.value);
-            if (v === 0) return '\u2014';
-            return v.toFixed(1) + '%';
         }
     """)
 
@@ -1050,65 +1023,6 @@ def fetch_benchmark_returns(ticker: str, currency: str = "USD") -> dict:
 
 
 @st.cache_data(ttl=900)
-def fetch_benchmark_yearly(ticker: str, currency: str = "USD", start_year: int = 2018) -> dict:
-    """Fetch year-end closing prices for a benchmark, converted to EUR.
-
-    Returns {year: price_eur, ...} for each year from start_year to now.
-    Used for overlaying benchmarks on the Performance chart.
-    """
-    try:
-        import yfinance as yf
-        from datetime import datetime
-
-        now = datetime.now()
-        data = yf.download(ticker, start=f"{start_year}-01-01", progress=False)
-        if data.empty:
-            return {}
-
-        close = data["Close"].squeeze() if hasattr(data["Close"], "squeeze") else data["Close"]
-
-        # Get EUR/X rates for conversion
-        fx_close = None
-        if currency != "EUR":
-            fx_ticker = f"EUR{currency}=X"
-            fx_data = yf.download(fx_ticker, start=f"{start_year}-01-01", progress=False)
-            if not fx_data.empty:
-                fx_close = fx_data["Close"].squeeze() if hasattr(fx_data["Close"], "squeeze") else fx_data["Close"]
-
-        result = {}
-        for yr in range(start_year, now.year + 1):
-            # Pick last trading day of December (or latest available for current year)
-            if yr == now.year:
-                yr_data = close[close.index.year == yr]
-            else:
-                yr_data = close[(close.index.year == yr) & (close.index.month == 12)]
-                if yr_data.empty:
-                    yr_data = close[close.index.year == yr]
-            if yr_data.empty:
-                continue
-
-            price = float(yr_data.iloc[-1])
-
-            # Convert to EUR
-            if fx_close is not None:
-                if yr == now.year:
-                    fx_yr = fx_close[fx_close.index.year == yr]
-                else:
-                    fx_yr = fx_close[(fx_close.index.year == yr) & (fx_close.index.month == 12)]
-                    if fx_yr.empty:
-                        fx_yr = fx_close[fx_close.index.year == yr]
-                if not fx_yr.empty:
-                    fx_rate = float(fx_yr.iloc[-1])
-                    if fx_rate > 0:
-                        price = price / fx_rate
-
-            result[yr] = price
-        return result
-    except Exception:
-        return {}
-
-
-@st.cache_data(ttl=900)
 def get_live_market_data() -> dict:
     """Fetch FX rates + market prices (indices, commodities, crypto) in one call.
     Cached for 15 minutes. Returns {"fx": {...}, "prices": {...}, "last_updated": str}."""
@@ -1301,12 +1215,6 @@ def _supabase_load_all_user_data(user_email: str) -> dict:
         return cache
     except Exception:
         return {}
-
-
-def _supabase_invalidate_cache(user_email: str):
-    """Clear the Supabase cache for a user (call after save)."""
-    cache_key = f"_sb_cache_{user_email}"
-    st.session_state.pop(cache_key, None)
 
 
 def _supabase_load(file_name: str, user_email: str, default=None):
@@ -1783,13 +1691,6 @@ def get_planned_investment(asset_class: str, year: int) -> float:
     return float(plan.get("planned_investment_yr", {}).get(asset_class, 0))
 
 
-def get_dividend_yield_pct(asset_class: str) -> float:
-    """Get expected dividend yield % for an asset class from investment plan."""
-    plan = load_json(DATA_DIR / "investment_plan.json", {})
-    if not isinstance(plan, dict): plan = {}
-    return float(plan.get("dividend_yield_pct", {}).get(asset_class, 0))
-
-
 def get_public_stocks_total_eur(fx_rates: dict, type_filter=None) -> float:
     positions = load_json(DATA_DIR / "public_stocks.json", [])
     total = 0.0
@@ -1927,55 +1828,6 @@ def get_all_totals_eur(fx_rates: dict) -> dict:
     }
 
 
-def get_net_worth_eur(fx_rates: dict) -> float:
-    return sum(get_all_totals_eur(fx_rates).values())
-
-
-def get_portfolio_projection(scenario: str, fx_rates: dict, assumptions: dict, years: int = 10) -> list:
-    """Project portfolio value incorporating cash flow contributions.
-
-    For liquid assets, uses planned investments from investment_plan.json.
-    For all assets, applies scenario-based return rates.
-    Also factors in net cash flow from cashflow.json for future years.
-    """
-    totals = get_all_totals_eur(fx_rates)
-    plan = load_json(DATA_DIR / "investment_plan.json", {})
-    if not isinstance(plan, dict): plan = {}
-    planned_inv = plan.get("planned_investment_yr", {})
-    cf = load_json(DATA_DIR / "cashflow.json", {})
-    cf_years = [str(y) for y in cf.get("years", [])]
-    cf_income = cf.get("income", {})
-    cf_expenses = cf.get("expenses", {})
-
-    result = [0.0] * (years + 1)
-    for asset_class, current_val in totals.items():
-        r = get_return_pct(asset_class, scenario, assumptions)
-        annual_inv = planned_inv.get(asset_class, 0)
-        if annual_inv > 0:
-            proj = project_value_with_contributions(current_val, r, annual_inv, years)
-        else:
-            proj = project_value(current_val, r, years)
-        for i, v in enumerate(proj):
-            result[i] += v
-
-    # Add net non-investment cash flow impact (life expenses, tax, debt reduce available capital)
-    # This is already captured in the planned investments, but we add cash flow
-    # projections for years that have data
-    for i in range(1, years + 1):
-        yr_str = str(CURRENT_YEAR + i)
-        if yr_str in cf_years:
-            # Non-investment expenses reduce portfolio
-            non_inv_keys = {"Debt Payment", "Wealth Tax", "Life Expenses"}
-            non_inv_exp = sum(v.get(yr_str, 0) for k, v in cf_expenses.items() if k in non_inv_keys)
-            total_inc = sum(v.get(yr_str, 0) for v in cf_income.values())
-            # Net available after non-investment costs (but planned investments already counted)
-            total_planned = sum(planned_inv.values())
-            net_surplus = total_inc - non_inv_exp - total_planned
-            if net_surplus != 0:
-                result[i] += net_surplus
-    return result
-
-
 def project_value_with_contributions(current: float, return_pct: float,
                                      annual_contribution: float, years: int = 10) -> list:
     """V(N) = V(N-1) * (1 + return) + new_capital_invested(N)."""
@@ -2037,28 +1889,6 @@ def get_annual_rental_income() -> float:
     items = load_json(DATA_DIR / "real_estate.json", [])
     return sum(i.get("annual_rental_eur", 0) for i in items
                if i.get("status", "Active") == "Active")
-
-
-def get_re_projection(years: int = 10, scenario: str = "Base") -> list:
-    """Project RE portfolio using per-item IRR × probability.
-
-    Similar to PE projection but for real estate items.
-    """
-    items = load_json(DATA_DIR / "real_estate.json", [])
-    mult = get_scenario_multipliers("re", scenario)
-    result = [0.0] * (years + 1)
-    for item in items:
-        if item.get("status") != "Active":
-            continue
-        current = item.get("current_value_eur", 0)
-        irr = item.get("expected_irr_pct", 0) * mult["irr"]
-        prob = min(100, item.get("success_probability_pct", 100) * mult["prob"])
-        for yr in range(years + 1):
-            if yr == 0:
-                result[yr] += current
-            else:
-                result[yr] += current * (1 + irr / 100) ** yr * (prob / 100)
-    return result
 
 
 def get_pe_annual_dividends() -> float:
@@ -2142,28 +1972,6 @@ def estimate_wealth_tax(fx_rates: dict) -> float:
     return taxable_base * 0.012
 
 
-def get_cashflow_auto_values(fx_rates: dict) -> dict:
-    """Return auto-populated income and expense values for the current year."""
-    divs = get_annual_dividend_income(fx_rates)
-    pe_exits = get_pe_exit_value_for_year(CURRENT_YEAR)
-    return {
-        "auto_income": {
-            "Equity Dividends": divs.get("Equity Dividends", 0),
-            "REITs Dividends": divs.get("REITs Dividends", 0),
-            "PE Dividends": get_pe_annual_dividends(),
-            "Bond Coupon": get_annual_bond_income(),
-            "Cash Interest": get_annual_cash_interest(fx_rates),
-            "Business Income": get_annual_business_income(),
-            "Rental Income": get_annual_rental_income(),
-            "PE Exits": pe_exits,
-        },
-        "auto_expenses": {
-            "Debt Payment": get_annual_debt_payments(),
-            "Wealth Tax (est.)": estimate_wealth_tax(fx_rates),
-        },
-    }
-
-
 def get_available_to_invest(fx_rates: dict) -> float:
     """Calculate available capital = current year net cash flow.
 
@@ -2180,22 +1988,6 @@ def get_available_to_invest(fx_rates: dict) -> float:
     total_non_invest = sum(v.get(yr, 0) for k, v in expenses.items() if k in non_invest_keys)
     return total_inc - total_non_invest
 
-
-def get_liquid_annual_income(fx_rates: dict) -> dict:
-    """Return annual income per liquid asset class."""
-    divs = get_annual_dividend_income(fx_rates)
-    return {
-        "Equity": divs.get("Equity Dividends", 0),
-        "REITs": divs.get("REITs Dividends", 0),
-        "Bonds": get_annual_bond_income(),
-        "Precious Metals": 0.0,
-        "Cash": get_annual_cash_interest(fx_rates),
-    }
-
-
-# ---------------------------------------------------------------------------
-# Cash-flow auto-pull helpers (future years)
-# ---------------------------------------------------------------------------
 
 def get_funds_calls_by_year() -> dict:
     """Return dict {year_int: total_actual_eur} of fund capital calls by year."""
@@ -2306,49 +2098,12 @@ def get_pe_dividends_total(year: int = 0) -> float:
     return total
 
 
-def get_investment_plan_by_year() -> dict:
-    """Return dict {asset_class: annual_amount} from investment_plan.json."""
-    plan = load_json(DATA_DIR / "investment_plan.json", {})
-    if not isinstance(plan, dict): plan = {}
-    return plan.get("planned_investment_yr", {})
-
-
 def load_dividend_config() -> dict:
     """Load dividend configuration (yields and actuals)."""
     return load_json(DATA_DIR / "dividend_config.json", {
         "equity_yield_pct": 2.5, "reit_yield_pct": 5.0, "pe_yield_pct": 3.0,
         "actual_dividends": {"Equity": {}, "REITs": {}, "PE": {}}
     })
-
-
-def get_projected_dividend(asset_class: str, year: int, current_value: float,
-                           annual_investment: float, return_pct: float) -> float:
-    """Project dividend for a given year based on growing capital + new investments.
-
-    Dividend = (base_value * (1+return)^years_ahead + contributions) * yield_pct
-    """
-    div_config = load_dividend_config()
-    actuals = div_config.get("actual_dividends", {}).get(asset_class, {})
-
-    # If actual dividend recorded for this year, use it
-    actual = actuals.get(str(year), 0)
-    if actual > 0:
-        return actual
-
-    # Project: value grows, dividend = value * yield
-    yield_map = {
-        "Equity": div_config.get("equity_yield_pct", 2.5),
-        "REITs": div_config.get("reit_yield_pct", 5.0),
-        "PE": div_config.get("pe_yield_pct", 3.0),
-    }
-    yld = yield_map.get(asset_class, 2.5) / 100
-    years_ahead = max(0, year - CURRENT_YEAR)
-    # Simple FV: current grows + annual contributions compound
-    fv = current_value * (1 + return_pct / 100) ** years_ahead
-    if years_ahead > 0 and return_pct > 0:
-        r = return_pct / 100
-        fv += annual_investment * ((1 + r) ** years_ahead - 1) / r
-    return fv * yld
 
 
 def get_valuation_new_capital(asset_class: str, ibkr_key: str, year: int) -> float:
@@ -2996,36 +2751,6 @@ def get_re_value_by_year(year: int) -> float:
     return total
 
 
-def get_pe_projection(years: int = 10, scenario: str = "Base") -> list:
-    """Project PE portfolio using per-item IRR × probability.
-
-    Expected value = current_value × (1 + IRR/100)^yr × probability/100
-    Failure → 0, so expected value is probability-weighted.
-
-    Scenario adjustments:
-      Super Bear: IRR×0.5, probability×0.5
-      Bear:       IRR×0.7, probability×0.75
-      Base:       as-is
-      Bull:       IRR×1.3, probability capped at 100
-    """
-    items = load_json(DATA_DIR / "private_equity.json", [])
-    mult = get_scenario_multipliers("pe", scenario)
-
-    result = [0.0] * (years + 1)
-    for item in items:
-        if item.get("status") != "Active":
-            continue
-        current = item.get("current_value_eur", 0)
-        irr = item.get("expected_irr_pct", 0) * mult["irr"]
-        prob = min(100, item.get("success_probability_pct", 0) * mult["prob"])
-        for yr in range(years + 1):
-            if yr == 0:
-                result[yr] += current
-            else:
-                result[yr] += current * (1 + irr / 100) ** yr * (prob / 100)
-    return result
-
-
 def get_historical_totals_by_asset(fx_rates: dict) -> dict:
     """Return per-year totals combining auto-computed PE/RE + manual asset_history.
 
@@ -3102,16 +2827,6 @@ def get_historical_totals_by_asset(fx_rates: dict) -> dict:
     return result
 
 
-def get_historical_net_worth() -> dict:
-    """Return dict of {year_str: total_net_worth} auto-computed from all sources.
-
-    Uses get_historical_totals_by_asset for the breakdown, sums per year.
-    """
-    fx = load_fx_rates()
-    by_asset = get_historical_totals_by_asset(fx)
-    return {yr: sum(assets.values()) for yr, assets in by_asset.items()}
-
-
 def get_portfolio_projection_v2(scenario: str, fx_rates: dict, assumptions: dict,
                                  years: int = 10, base_year: int = 0) -> dict:
     """Project portfolio per asset class starting from base_year.
@@ -3156,226 +2871,6 @@ def get_portfolio_projection_v2(scenario: str, fx_rates: dict, assumptions: dict
 # ---------------------------------------------------------------------------
 # IB CSV parsing
 # ---------------------------------------------------------------------------
-
-def parse_ib_csv(csv_text: str) -> list:
-    """Parse Interactive Brokers Activity Statement CSV (legacy - returns flat stock list)."""
-    result = parse_ib_activity_statement(csv_text)
-    return result.get("stocks", [])
-
-
-def parse_ib_trades(csv_text: str) -> dict:
-    """Parse IBKR Activity Statement for Trades section to compute net capital flows.
-
-    Returns dict: {asset_class: {year_str: net_amount_eur}}.
-    Positive = net bought (cash out), Negative = net sold (cash in).
-    Asset classes: "Equity", "REIT", "Precious Metals", "Bond"
-    """
-    fx = load_fx_rates()
-    existing = load_json(DATA_DIR / "public_stocks.json", [])
-    reit_tickers = {p.get("ticker", "").upper() for p in existing if p.get("type") == "REIT"}
-    metals_tickers = {p.get("ticker", "").upper() for p in existing if p.get("type") == "Precious Metals"}
-    metal_keywords = {"GLD", "SLV", "IAU", "PPLT", "PALL", "GDX", "GDXJ", "SIL", "SILJ",
-                      "SAFE", "GOLD", "PHYS", "PSLV", "SGOL", "AAAU"}
-
-    flows = {}  # {asset_class: {year_str: total_eur}}
-    lines = csv_text.strip().split("\n")
-    header = None
-
-    for line in lines:
-        parts = [p.strip().strip('"') for p in line.split(",")]
-        if len(parts) < 3:
-            continue
-        # Look for Trades section
-        if parts[0] == "Trades" and parts[1] == "Header":
-            header = parts
-            continue
-        if parts[0] == "Trades" and parts[1] == "Data":
-            if not header or parts[2] in ("Total", "SubTotal", ""):
-                continue
-            row = dict(zip(header[2:], parts[2:]))
-            try:
-                symbol = row.get("Symbol", "")
-                asset_cat = row.get("Asset Category", "").upper()
-                currency = row.get("Currency", "USD")
-                # Net proceeds: negative = buy, positive = sell
-                proceeds = float(row.get("Proceeds", 0) or 0)
-                # Commission
-                comm = float(row.get("Comm/Fee", row.get("Commission", 0)) or 0)
-                # Date
-                date_str = row.get("Date/Time", row.get("Trade Date", ""))
-                if not date_str:
-                    continue
-                # Extract year from date
-                year_str = date_str[:4] if len(date_str) >= 4 else ""
-                if not year_str.isdigit():
-                    continue
-
-                # Net cost: for buys proceeds is negative (money out), sells positive (money in)
-                # We want net capital flow: positive = bought, negative = sold
-                net_eur = -to_eur(proceeds + comm, currency, fx)
-
-                # Classify
-                if asset_cat == "BOND":
-                    ac = "Bond"
-                elif asset_cat == "CMDTY" or symbol.upper() in metal_keywords or symbol.upper() in metals_tickers:
-                    ac = "Precious Metals"
-                elif symbol.upper() in reit_tickers:
-                    ac = "REIT"
-                else:
-                    ac = "Equity"
-
-                flows.setdefault(ac, {})
-                flows[ac][year_str] = flows[ac].get(year_str, 0) + net_eur
-            except (ValueError, KeyError):
-                continue
-
-    # Round all values
-    for ac in flows:
-        for yr in flows[ac]:
-            flows[ac][yr] = round(flows[ac][yr])
-    return flows
-
-
-def parse_ib_dividends(csv_text: str) -> dict:
-    """Parse IBKR Dividend Detail CSV to extract per-stock dividend income.
-
-    Reads DividendDetail,Data,Summary rows.
-    Returns dict:
-        by_symbol: {symbol: {gross_eur, withhold_eur, net_eur}}
-        by_type:   {Equity: float, REITs: float}
-        year:      int
-    """
-    existing = load_json(DATA_DIR / "public_stocks.json", [])
-    reit_tickers = {p.get("ticker", "").upper() for p in existing if p.get("type") == "REIT"}
-    ticker_map = {}
-    for p in existing:
-        t = p.get("ticker", "")
-        ticker_map[t.upper()] = t
-        ticker_map[t.upper().rstrip("dlDL")] = t
-
-    by_symbol = {}
-    year = None
-    lines = csv_text.strip().split("\n")
-    header = None
-
-    for line in lines:
-        parts = [p.strip().strip('"') for p in line.split(",")]
-        if len(parts) < 3:
-            continue
-        if parts[0] == "DividendDetail" and parts[1] == "Header":
-            header = parts[2:]
-            continue
-        if parts[0] == "DividendDetail" and parts[1] == "Data" and len(parts) > 2 and parts[2] == "Summary":
-            if not header:
-                continue
-            row = dict(zip(header, parts[2:]))
-            try:
-                ib_symbol = row.get("Symbol", "").strip()
-                gross_base = float(row.get("GrossInBase", 0) or 0)
-                withhold_base = float(row.get("WithholdInBase", 0) or 0)
-                net = gross_base + withhold_base
-
-                report_date = row.get("ReportDate", "")
-                if report_date and len(report_date) >= 4 and year is None:
-                    year = int(report_date[:4])
-
-                sym_upper = ib_symbol.upper()
-                our_ticker = (ticker_map.get(sym_upper) or
-                              ticker_map.get(sym_upper.rstrip("dlDL")) or
-                              ticker_map.get(sym_upper.split(".")[0]) or
-                              ib_symbol)
-
-                if our_ticker not in by_symbol:
-                    by_symbol[our_ticker] = {"gross_eur": 0, "withhold_eur": 0, "net_eur": 0}
-                by_symbol[our_ticker]["gross_eur"] += gross_base
-                by_symbol[our_ticker]["withhold_eur"] += withhold_base
-                by_symbol[our_ticker]["net_eur"] += net
-            except (ValueError, KeyError):
-                continue
-
-    by_type = {"Equity": 0.0, "REITs": 0.0}
-    for ticker, vals in by_symbol.items():
-        if ticker.upper() in reit_tickers:
-            by_type["REITs"] += vals["net_eur"]
-        else:
-            by_type["Equity"] += vals["net_eur"]
-
-    for t in by_symbol:
-        for k in by_symbol[t]:
-            by_symbol[t][k] = round(by_symbol[t][k], 2)
-    for t in by_type:
-        by_type[t] = round(by_type[t], 2)
-
-    return {"by_symbol": by_symbol, "by_type": by_type, "year": year or CURRENT_YEAR}
-
-
-def apply_ib_dividends(parsed: dict) -> dict:
-    """Apply parsed IBKR dividend data to stocks, dividend_config, and asset_value_history."""
-    year_str = str(parsed["year"])
-    by_symbol = parsed["by_symbol"]
-    by_type = parsed["by_type"]
-
-    # 1. Update per-stock dividends
-    stocks = load_json(DATA_DIR / "public_stocks.json", [])
-    updated_count = 0
-    for pos in stocks:
-        ticker = pos.get("ticker", "")
-        if ticker in by_symbol:
-            pos["net_div_eur"] = by_symbol[ticker]["net_eur"]
-            updated_count += 1
-    save_json(DATA_DIR / "public_stocks.json", stocks)
-
-    # 2. Update dividend_config actual_dividends
-    div_config = load_json(DATA_DIR / "dividend_config.json", {})
-    actuals = div_config.setdefault("actual_dividends", {})
-    if by_type.get("Equity", 0) > 0:
-        actuals.setdefault("Equity", {})[year_str] = round(by_type["Equity"])
-    if by_type.get("REITs", 0) > 0:
-        actuals.setdefault("REITs", {})[year_str] = round(by_type["REITs"])
-    save_json(DATA_DIR / "dividend_config.json", div_config)
-
-    # 3. Update asset_value_history with year-end valuations from current positions
-    fx = load_fx_rates()
-    avh = load_json(DATA_DIR / "asset_value_history.json", {})
-    equity_total = etf_total = reit_total = metals_total = 0.0
-
-    for pos in stocks:
-        qty = pos.get("quantity", 0)
-        price = pos.get("current_price", 0)
-        ccy = pos.get("currency", "EUR")
-        val_eur = to_eur(qty * price, ccy, fx)
-        ptype = pos.get("type", "Equity")
-        if ptype == "REIT":
-            reit_total += val_eur
-        elif ptype == "ETF":
-            etf_total += val_eur
-        elif ptype == "Precious Metals":
-            metals_total += val_eur
-        else:
-            equity_total += val_eur
-
-    metals_list = load_json(DATA_DIR / "precious_metals.json", [])
-    for m in metals_list:
-        metals_total += m.get("quantity_oz", 0) * m.get("current_price_eur", 0)
-
-    avh.setdefault("Equity", {})[year_str] = round(equity_total)
-    avh.setdefault("ETF", {})[year_str] = round(etf_total)
-    avh.setdefault("REITs", {})[year_str] = round(reit_total)
-    if metals_total > 0:
-        avh.setdefault("Precious Metals", {})[year_str] = round(metals_total)
-    save_json(DATA_DIR / "asset_value_history.json", avh)
-
-    return {
-        "stocks_updated": updated_count,
-        "equity_dividends": by_type.get("Equity", 0),
-        "reit_dividends": by_type.get("REITs", 0),
-        "equity_valuation": round(equity_total),
-        "etf_valuation": round(etf_total),
-        "reit_valuation": round(reit_total),
-        "metals_valuation": round(metals_total),
-        "year": parsed["year"],
-    }
-
 
 def load_ibkr_capital_flows() -> dict:
     """Load stored IBKR capital flows: {asset_class: {year_str: net_eur}}."""
@@ -4270,123 +3765,6 @@ def get_ibkr_new_capital(asset_class: str, year: int) -> float | None:
         return None
     val = ac_flows.get(str(year))
     return val  # None if not present, else the amount
-
-
-def parse_ib_activity_statement(csv_text: str) -> dict:
-    """Parse IB Activity Statement CSV and classify positions.
-
-    Returns dict with keys: stocks, bonds, metals.
-    Uses the Asset Category column (STK, BOND, CMDTY) when available,
-    otherwise falls back to heuristics.
-    """
-    # Load existing REIT tickers for classification
-    existing = load_json(DATA_DIR / "public_stocks.json", [])
-    reit_tickers = {p.get("ticker", "").upper() for p in existing if p.get("type") == "REIT"}
-
-    stocks = []
-    bonds = []
-    metals = []
-
-    lines = csv_text.strip().split("\n")
-    header = None
-
-    # Known metal tickers/keywords
-    metal_keywords = {"GLD", "SLV", "IAU", "PPLT", "PALL", "GDX", "GDXJ", "SIL", "SILJ",
-                      "SAFE", "GOLD", "PHYS", "PSLV", "SGOL", "AAAU"}
-
-    for line in lines:
-        parts = [p.strip().strip('"') for p in line.split(",")]
-        if len(parts) < 3:
-            continue
-        if parts[0] == "Open Positions" and parts[1] == "Header":
-            header = parts
-            continue
-        if parts[0] == "Open Positions" and parts[1] == "Data":
-            if parts[2] in ("Total", "SubTotal", ""):
-                continue
-            if header is None:
-                continue
-            row = dict(zip(header[2:], parts[2:]))
-            try:
-                symbol = row.get("Symbol", "")
-                asset_cat = row.get("Asset Category", row.get("Asset Class", "")).upper()
-                currency = row.get("Currency", "USD")
-                quantity = float(row.get("Quantity", 0) or 0)
-                cost = float(row.get("Cost Price", row.get("Average Cost", 0)) or 0)
-                price = float(row.get("Close Price", row.get("Mark Price", 0)) or 0)
-                desc = row.get("Description", symbol)
-
-                if asset_cat == "BOND":
-                    bonds.append({
-                        "id": new_id(),
-                        "name": desc,
-                        "currency": currency,
-                        "face_value": abs(quantity),
-                        "purchase_price": cost,
-                        "coupon_rate_pct": 0.0,  # needs manual entry
-                        "maturity_date": "",       # needs manual entry
-                        "current_value_eur": abs(quantity) * price / 100,  # bonds quoted as % of face
-                    })
-                elif asset_cat == "CMDTY" or symbol.upper() in metal_keywords:
-                    metals.append({
-                        "id": new_id(),
-                        "metal": "Gold" if "GOLD" in desc.upper() or "GLD" in symbol.upper() or "GDX" in symbol.upper() else "Silver" if "SILV" in desc.upper() or "SLV" in symbol.upper() or "SIL" in symbol.upper() else "Other",
-                        "form": "ETF",
-                        "ticker": symbol,
-                        "quantity_oz": quantity,
-                        "purchase_price_eur": cost,
-                        "current_price_eur": price,
-                        "notes": f"Imported from IB: {desc}",
-                    })
-                else:
-                    # Stock/ETF/REIT
-                    pos_type = "REIT" if symbol.upper() in reit_tickers else "Equity"
-                    stocks.append({
-                        "id": new_id(),
-                        "ticker": symbol,
-                        "name": desc,
-                        "type": pos_type,
-                        "currency": currency,
-                        "quantity": quantity,
-                        "cost_basis": cost,
-                        "current_price": price,
-                        "net_div_eur": 0.0,
-                        "last_updated": datetime.now().isoformat(),
-                    })
-            except (ValueError, KeyError):
-                continue
-    return {"stocks": stocks, "bonds": bonds, "metals": metals}
-
-
-def merge_ib_positions(existing: list, imported: list, match_key: str = "ticker") -> list:
-    """Merge imported IB positions into existing, matching by match_key.
-
-    - Matched: updates quantity, prices, last_updated; preserves manual fields (net_div_eur, type, etc.)
-    - New: appends with new ID
-    Returns merged list.
-    """
-    existing_map = {}
-    for p in existing:
-        key = p.get(match_key, "").upper()
-        if key:
-            existing_map[key] = p
-
-    merged = list(existing)  # start with copy
-    for imp in imported:
-        key = imp.get(match_key, "").upper()
-        if key and key in existing_map:
-            # Update existing position
-            pos = existing_map[key]
-            pos["quantity"] = imp.get("quantity", pos.get("quantity", 0))
-            pos["current_price"] = imp.get("current_price", pos.get("current_price", 0))
-            pos["cost_basis"] = imp.get("cost_basis", pos.get("cost_basis", 0))
-            pos["last_updated"] = datetime.now().isoformat()
-            # Preserve: net_div_eur, type, name (manual fields)
-        else:
-            # New position
-            imp["id"] = new_id()
-            merged.append(imp)
-    return merged
 
 
 import ast

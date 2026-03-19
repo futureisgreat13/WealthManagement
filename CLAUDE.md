@@ -65,3 +65,11 @@ There is no test suite, linter, or build step. Verification is done manually thr
 - Always fact check when implementing something.
 - Ask user questions in the middle of execution if stuck.
 
+## Musk 5-Step Algorithm (apply before adding new code)
+
+1. **Question Every Requirement** — Challenge every requirement, especially from "smart" people. It might be wrong.
+2. **Delete Unnecessary Parts** — Remove anything that shouldn't exist. Don't optimize a step that should be deleted.
+3. **Simplify or Optimize** — Only after deleting. Streamline what remains.
+4. **Accelerate Cycle Time** — Speed up remaining processes. Only after steps 1-3.
+5. **Automate** — Automate the final optimized process. Never automate before simplifying.
+
