@@ -1255,8 +1255,81 @@ def _get_effective_path(path: Path) -> Path:
     return Path(user_dir) / relative
 
 
+# ── Supabase backend ──────────────────────────────────────────────────
+
+def _get_supabase_client():
+    """Return a cached Supabase client, or None if not configured."""
+    if "_supabase_client" in st.session_state:
+        return st.session_state["_supabase_client"]
+    try:
+        url = st.secrets.get("supabase", {}).get("url")
+        key = st.secrets.get("supabase", {}).get("key")
+        if url and key:
+            from supabase import create_client
+            client = create_client(url, key)
+            st.session_state["_supabase_client"] = client
+            return client
+    except Exception:
+        pass
+    st.session_state["_supabase_client"] = None
+    return None
+
+
+def _is_user_file(path: Path) -> bool:
+    """Check if a path is a per-user data file (not shared)."""
+    try:
+        relative = path.relative_to(DATA_DIR)
+    except ValueError:
+        return False
+    return relative.name not in SHARED_FILES
+
+
+def _supabase_load(file_name: str, user_email: str, default=None):
+    """Load JSON data from Supabase for a specific user and file."""
+    client = _get_supabase_client()
+    if client is None:
+        return None  # Supabase not configured, use filesystem
+    try:
+        result = client.table("user_data").select("data").eq(
+            "user_email", user_email).eq("file_name", file_name).execute()
+        if result.data and len(result.data) > 0:
+            data = result.data[0]["data"]
+            if default is not None and type(data) != type(default):
+                return default
+            return data
+    except Exception:
+        pass
+    return None  # Not found in Supabase
+
+
+def _supabase_save(file_name: str, user_email: str, data) -> bool:
+    """Save JSON data to Supabase for a specific user and file."""
+    client = _get_supabase_client()
+    if client is None:
+        return False  # Supabase not configured
+    try:
+        client.table("user_data").upsert({
+            "user_email": user_email,
+            "file_name": file_name,
+            "data": data,
+            "updated_at": datetime.now().isoformat(),
+        }, on_conflict="user_email,file_name").execute()
+        return True
+    except Exception:
+        return False
+
+
 def load_json(path: Path, default=None):
     path = _get_effective_path(path)
+
+    # Try Supabase for per-user files
+    user_email = st.session_state.get("user_email")
+    if user_email and _is_user_file(path):
+        sb_data = _supabase_load(path.name, user_email, default)
+        if sb_data is not None:
+            return sb_data
+
+    # Fallback to filesystem
     if path.exists():
         try:
             with open(path, "r") as f:
@@ -1272,33 +1345,77 @@ def load_json(path: Path, default=None):
 
 def save_json(path: Path, data) -> None:
     path = _get_effective_path(path)
+
+    # Save to Supabase for per-user files
+    user_email = st.session_state.get("user_email")
+    if user_email and _is_user_file(path):
+        _supabase_save(path.name, user_email, data)
+
+    # Always also save to filesystem (local dev + cache)
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
 
 
 def setup_user_data_dir(email: str, name: str = "") -> Path:
-    """Initialize user data directory. Copies existing data for owner, blank templates for others."""
+    """Initialize user data directory and Supabase records for new users."""
     import shutil
 
     safe_email = email.lower().strip()
     if ".." in safe_email or "/" in safe_email or "\\" in safe_email:
         raise ValueError(f"Invalid email for directory name: {email}")
 
+    # Store email in session state for Supabase queries
+    st.session_state["user_email"] = safe_email
+
     user_dir = USERS_DIR / safe_email
+
+    # Check if user exists in Supabase
+    sb_client = _get_supabase_client()
+    user_exists_in_sb = False
+    if sb_client:
+        try:
+            result = sb_client.table("user_data").select("file_name").eq(
+                "user_email", safe_email).limit(1).execute()
+            user_exists_in_sb = bool(result.data)
+        except Exception:
+            pass
 
     if not user_dir.exists():
         user_dir.mkdir(parents=True, exist_ok=True)
 
-        # Always copy from templates for new users (never copy root data)
-        if TEMPLATE_DIR.exists():
-            for json_file in TEMPLATE_DIR.glob("*.json"):
-                shutil.copy2(json_file, user_dir / json_file.name)
+        if user_exists_in_sb:
+            # User has data in Supabase — load it to local cache
+            try:
+                result = sb_client.table("user_data").select("file_name,data").eq(
+                    "user_email", safe_email).execute()
+                for row in result.data:
+                    fpath = user_dir / row["file_name"]
+                    with open(fpath, "w") as f:
+                        json.dump(row["data"], f, indent=2)
+            except Exception:
+                pass
         else:
-            # No templates — create minimal blank files
-            _create_blank_templates()
-            for json_file in TEMPLATE_DIR.glob("*.json"):
-                shutil.copy2(json_file, user_dir / json_file.name)
+            # New user — copy from templates
+            if TEMPLATE_DIR.exists():
+                for json_file in TEMPLATE_DIR.glob("*.json"):
+                    shutil.copy2(json_file, user_dir / json_file.name)
+            else:
+                _create_blank_templates()
+                for json_file in TEMPLATE_DIR.glob("*.json"):
+                    shutil.copy2(json_file, user_dir / json_file.name)
+
+            # Also seed Supabase with template data for new users
+            if sb_client:
+                for json_file in (user_dir).glob("*.json"):
+                    if json_file.name.startswith("_"):
+                        continue
+                    try:
+                        with open(json_file) as f:
+                            data = json.load(f)
+                        _supabase_save(json_file.name, safe_email, data)
+                    except Exception:
+                        pass
 
     # Write/update profile
     profile_path = user_dir / "_profile.json"

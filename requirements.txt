@@ -4,3 +4,4 @@ pandas>=2.0.0
 yfinance>=0.2.40
 streamlit-aggrid
 requests
+supabase>=2.0.0
