@@ -192,6 +192,27 @@ if result:
         else:
             st.info("No transactions found (excluding FX trades).")
 
+        # --- Sold Positions ---
+        sold = result.get("sold_positions", [])
+        if sold:
+            st.divider()
+            st.subheader(f"🔻 Positions Sold During {import_year}")
+            st.caption("These stocks were held at some point during the year but fully liquidated. "
+                       "Their dividends and capital flows are included above.")
+            sold_df = pd.DataFrame([{
+                "Symbol": s["symbol"],
+                "Asset Class": s["asset_class"],
+                "Proceeds (EUR)": s["proceeds_eur"],
+                "Realized P/L (EUR)": s["realized_pnl_eur"],
+            } for s in sorted(sold, key=lambda x: -abs(x["proceeds_eur"]))])
+            utils.render_aggrid_table(sold_df, key="ibkr_sold",
+                                      height=min(400, len(sold_df) * 32 + 60),
+                                      numeric_cols=["Proceeds (EUR)", "Realized P/L (EUR)"])
+            total_proceeds = sum(s["proceeds_eur"] for s in sold)
+            total_pnl = sum(s["realized_pnl_eur"] for s in sold)
+            st.markdown(f"**Total Proceeds:** {utils.fmt_eur_short(total_proceeds)} | "
+                        f"**Total Realized P/L:** {utils.fmt_eur_short(total_pnl)}")
+
         # --- Import Button ---
         st.divider()
         st.subheader("✅ Apply Import")

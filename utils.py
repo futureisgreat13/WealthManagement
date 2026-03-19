@@ -3560,22 +3560,12 @@ def parse_ibkr_activity_statement(csv_text: str) -> dict:
 
     sections = _split_ibkr_activity_sections(csv_text)
 
-    # --- Extract FX rates from Forex Balances ---
+    # --- Extract FX rates: app rates PRIMARY, IBKR as fallback ---
+    # Use app's year-end FX rates for consistency across all data sources
     fx_rates_map = {"EUR": 1.0}
-    for row in sections.get("Forex Balances", []):
-        ccy = row.get("Description", "").strip()
-        close_str = row.get("Close Price", "")
-        if ccy and close_str:
-            try:
-                fx_rates_map[ccy] = float(close_str)
-            except (ValueError, TypeError):
-                pass
-
-    # Fallback: try app's stored FX rates for missing currencies
     try:
         app_fx = load_fx_rates()
     except Exception:
-        # Direct file read fallback (works outside Streamlit context)
         try:
             app_fx = load_json(DATA_DIR / "fx_rates.json", {})
         except Exception:
@@ -3583,8 +3573,18 @@ def parse_ibkr_activity_statement(csv_text: str) -> dict:
     for pair, rate in app_fx.items():
         if pair.startswith("EUR") and len(pair) == 6:
             ccy = pair[3:]
-            if ccy not in fx_rates_map and rate > 0:
+            if rate > 0:
                 fx_rates_map[ccy] = 1.0 / rate  # EUR/X rate → EUR per 1 unit of X
+
+    # Fallback: use IBKR's Forex Balances for currencies not in app FX rates
+    for row in sections.get("Forex Balances", []):
+        ccy = row.get("Description", "").strip()
+        close_str = row.get("Close Price", "")
+        if ccy and close_str and ccy not in fx_rates_map:
+            try:
+                fx_rates_map[ccy] = float(close_str)
+            except (ValueError, TypeError):
+                pass
 
     # --- Extract Positions from Open Positions section ---
     positions = []
@@ -3993,6 +3993,33 @@ def compute_ibkr_import(positions_csv: str, transactions_csv: str, year: int,
     for ac in valuations_by_class:
         valuations_by_class[ac] = round(valuations_by_class[ac])
 
+    # --- Sold positions: symbols traded during period but not in Open Positions ---
+    sold_positions = []
+    # Aggregate trades by symbol
+    trades_by_sym = {}
+    for tx in transactions:
+        sym = tx["symbol"]
+        if is_fx_symbol(sym):
+            continue
+        if sym not in trades_by_sym:
+            trades_by_sym[sym] = {"qty": 0, "proceeds_eur": 0, "realized_pnl_eur": 0}
+        trades_by_sym[sym]["qty"] += tx["quantity"]
+        trades_by_sym[sym]["proceeds_eur"] += tx["net_cash"] * tx["fx_rate"]
+        trades_by_sym[sym]["realized_pnl_eur"] += tx.get("pnl", 0) * tx["fx_rate"]
+
+    # Symbols in trades but NOT in open positions = sold during period
+    open_syms = {p["symbol"] for p in pos_data["positions"]}
+    for sym, data in trades_by_sym.items():
+        if sym not in open_syms:
+            cat = classify_symbol(sym, classifications)
+            ac = _asset_class_label(cat)
+            sold_positions.append({
+                "symbol": sym,
+                "asset_class": ac,
+                "proceeds_eur": round(data["proceeds_eur"]),
+                "realized_pnl_eur": round(data["realized_pnl_eur"]),
+            })
+
     return {
         "year": year,
         "positions_by_class": positions_by_class,
@@ -4000,6 +4027,7 @@ def compute_ibkr_import(positions_csv: str, transactions_csv: str, year: int,
         "dividends_by_symbol": dividends_by_symbol,
         "net_capital_by_class": net_capital_by_class,
         "valuations_by_class": valuations_by_class,
+        "sold_positions": sold_positions,
         "unclassified": sorted(unclassified),
     }
 
